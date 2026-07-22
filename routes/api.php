@@ -1,0 +1,87 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/user', function (Request $request) {
+    return $request->user();
+})->middleware('auth:sanctum');
+
+
+//======================================== authentication ========================================
+
+Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'register']);
+Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login']);
+Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout']);
+Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword']);
+
+
+//======================================== users ========================================
+//Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer-user']);
+Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/user/store", [\App\Http\Controllers\Api\v1\User\UserController::class, "store"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/upload/profile_pic", [\App\Http\Controllers\Api\v1\User\UserController::class, "uploadPic"])->middleware('auth:sanctum');
+Route::get("/v1/user/show/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "show"])->middleware('auth:sanctum');
+
+Route::post("/v1/user/update/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "update"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer-user']);
+Route::get("/v1/user/delete/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "destroy"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/user/restore/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "restore"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/user/search", [\App\Http\Controllers\Api\v1\User\UserController::class, "searchUser"])->middleware('auth:sanctum');
+Route::get("/v1/user/remove_pic/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "removeUserPicFromStorage"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer-user']);
+Route::post("/v1/user/change/pass/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "changePassword"])->middleware('auth:sanctum');
+Route::get('/v1/user/check_permission/{user_id}/{permission}',[\App\Http\Controllers\Api\v1\User\UserController::class, "checkPermissionExists"]);
+
+
+/* ------------------------------| roles |------------------------------ */
+Route::get("/v1/user/attach_role/{user_id}/{role_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "attachRoleUserToUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/user/detach_role/{user_id}/{role_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "detachRoleFromUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/user/sync_roles/{user_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "syncRolesToUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| departments |------------------------------ */
+Route::get("/v1/user/attach_department/{user_id}/{dept_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "attachDepartmentUserToUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/user/detach_department/{user_id}/{dept_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "detachDepartmentFromUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/user/sync_departments/{user_id}", [\App\Http\Controllers\Api\v1\User\UserRelationController::class, "syncDepartmentsToUser"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+
+//======================================== role
+Route::get("/v1/roles", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "index"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/role/store", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "store"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/show/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "show"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/role/update/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "update"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/delete/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "destroy"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/restore/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleController::class, "restore"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| permissions |------------------------------ */
+Route::get("/v1/role/attach_permission/{role_id}/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "attachPermissionToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/detach_permission/{role_id}/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "detachPermissionFromRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/role/sync_permissions/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "syncPermissionsToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| positions |------------------------------ */
+Route::get("/v1/role/attach_position/{role_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "attachPositionToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/detach_position/{role_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "detachPositionFromRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/role/sync_positions/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "syncPositionsToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| users |------------------------------ */
+Route::get("/v1/role/attach_user/{role_id}/{user_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "attachUserToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/role/detach_user/{role_id}/{user_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "detachUserFromRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/role/sync_users/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "syncUsersToRole"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+
+//======================================== permission ========================================
+//======================================== permission
+Route::get("/v1/permissions", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "index"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/permission/store", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "store"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/permission/show/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "show"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/permission/update/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "update"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/permission/delete/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "destroy"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/permission/restore/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionController::class, "restore"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| roles |------------------------------ */
+Route::get("/v1/permission/attach_role/{permission_id}/{role_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "attachRoleToPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/permission/detach_role/{permission_id}/{role_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "detahcRoleFromPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/permission/sync_roles/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "syncRolesToPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+
+/* ------------------------------| positions |------------------------------ */
+Route::get("/v1/permission/attach_position/{permission_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "attachPositionToPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::get("/v1/permission/detach_position/{permission_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "detahcPosionFromPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);
+Route::post("/v1/permission/sync_positions/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "syncPositionsToPermission"])->middleware('auth:sanctum')->middleware([\App\Http\Middleware\CheckRole::class.':admin-developer']);

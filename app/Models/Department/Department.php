@@ -3,6 +3,7 @@
 namespace App\Models\Department;
 
 
+use App\Models\Document\Document;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -29,6 +30,11 @@ class Department extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'dept_user', 'dept_id', 'user_id');
+    }
+
+    public function documents(): BelongsToMany
+    {
+        return $this->belongsToMany(Document::class, 'doc_department', 'dept_id', 'doc_id');
     }
 
 }

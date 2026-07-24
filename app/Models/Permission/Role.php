@@ -2,6 +2,7 @@
 
 namespace App\Models\Permission;
 
+use App\Models\Document\Document;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -30,6 +31,10 @@ class Role extends Model
         return $this->belongsToMany(User::class, 'role_user', 'role_id', 'user_id');
     }
 
+    public function documents(): BelongsToMany
+    {
+        return $this->belongsToMany(Document::class, 'doc_role', 'role_id', 'doc_id');
+    }
     public function hasPermission($permission)
     {
         return $this->permissions()->where('name_en', $permission)->exists();

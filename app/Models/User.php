@@ -5,6 +5,8 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\Chat\ChatSession;
 use App\Models\Department\Department;
+use App\Models\Document\Document;
+use App\Models\Log\Log;
 use App\Models\Permission\Role;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -55,6 +57,16 @@ class User extends Authenticatable
         return $this->hasMany(ChatSession::class, 'user_id');
     }
 
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class, 'uploader_id');
+    }
+
+    public function logs(): HasMany
+    {
+        return $this->hasMany(Log::class, 'user_id');
+    }
+    
     public function hasPermission($permission)
     {
         foreach ($this->roles as $role)

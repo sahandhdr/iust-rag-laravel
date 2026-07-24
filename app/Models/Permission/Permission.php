@@ -2,6 +2,7 @@
 
 namespace App\Models\Permission;
 
+use App\Models\Document\Document;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -23,5 +24,8 @@ class Permission extends Model
         return $this->belongsToMany(Position::class, 'permission_position', 'permission_id', 'position_id');
     }
 
-
+    public function documents(): BelongsToMany
+    {
+        return $this->belongsToMany(Document::class, 'doc_permission', 'permission_id', 'doc_id');
+    }
 }

@@ -21,17 +21,17 @@ class Position extends Model
 
     public function permissions()
     {
-        return $this->belongsToMany(Permission::class, 'permission_position', 'position_id', 'permission_id');
+        return $this->belongsToMany(Permission::class, 'permission_position', 'position_id', 'permission_id')->withTimestamps();
     }
 
     public function roles()
     {
-        return $this->belongsToMany(Role::class, 'role_position', 'position_id', 'role_id');
+        return $this->belongsToMany(Role::class, 'role_position', 'position_id', 'role_id')->withTimestamps();
     }
 
     public function users()
     {
-        return $this->belongsToMany(User::class, 'position_user', 'position_id', 'user_id');
+        return $this->belongsToMany(User::class, 'position_user', 'position_id', 'user_id')->withTimestamps();
     }
 
     public function parent()

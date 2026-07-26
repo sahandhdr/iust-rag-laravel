@@ -15,28 +15,39 @@ class Role extends Model
 
     protected $table = "roles";
     protected $guarded = [];
+    protected function casts(): array
+    {
+        return [
+            'deleted_at' => 'datetime',
+        ];
+    }
 
     public function positions(): BelongsToMany
     {
-        return $this->belongsToMany(Position::class, 'role_position', 'role_id', 'position_id');
+        return $this->belongsToMany(Position::class, 'role_position', 'role_id', 'position_id')->withTimestamps();
     }
 
     public function permissions(): BelongsToMany
     {
-        return $this->belongsToMany(Permission::class, 'role_permission', 'role_id', 'permission_id');
+        return $this->belongsToMany(Permission::class, 'permission_role', 'role_id', 'permission_id')->withTimestamps();
     }
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'role_user', 'role_id', 'user_id');
+        return $this->belongsToMany(User::class, 'role_user', 'role_id', 'user_id')->withTimestamps();
     }
 
     public function documents(): BelongsToMany
     {
-        return $this->belongsToMany(Document::class, 'doc_role', 'role_id', 'doc_id');
+        return $this->belongsToMany(Document::class, 'doc_role', 'role_id', 'doc_id')->withTimestamps();
     }
-    public function hasPermission($permission)
+
+    /* ------------------------------------------------------------------
+     | Helpers
+     | ------------------------------------------------------------------ */
+
+    public function hasPermission($permission): bool
     {
-        return $this->permissions()->where('name_en', $permission)->exists();
+        return $this->permissions()->where('title_en', $permission)->exists();
     }
 }

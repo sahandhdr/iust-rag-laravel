@@ -12,4 +12,10 @@ class SystemSetting extends Model
 
     protected $table = "system_settings";
     protected $guarded = [];
+    protected function casts(): array
+    {
+        return [
+            'deleted_at' => 'datetime',
+        ];
+    }
 }

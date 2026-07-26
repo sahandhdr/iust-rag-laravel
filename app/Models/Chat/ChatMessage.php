@@ -10,10 +10,18 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ChatMessage extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = "chat_messages";
     protected $guarded = [];
+    protected function casts(): array
+    {
+        return [
+            'sources'    => 'array',
+            'feedback'   => 'boolean', // '1' / '0' → true/false
+            'deleted_at' => 'datetime',
+        ];
+    }
 
     public function chat_session(): BelongsTo
     {

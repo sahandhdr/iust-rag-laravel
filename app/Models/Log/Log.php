@@ -14,6 +14,13 @@ class Log extends Model
 
     protected $table = "audit_logs";
     protected $guarded = [];
+    protected function casts(): array
+    {
+        return [
+            'details'    => 'array',
+            'deleted_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {

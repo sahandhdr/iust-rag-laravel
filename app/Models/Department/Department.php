@@ -16,7 +16,12 @@ class Department extends Model
     use HasFactory,SoftDeletes;
     protected $table = "departments";
     protected $guarded = [];
-
+    protected function casts(): array
+    {
+        return [
+            'deleted_at' => 'datetime',
+        ];
+    }
     public function parent()
     {
         return $this->belongsTo(Department::class, 'dept_id');
@@ -29,12 +34,12 @@ class Department extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'dept_user', 'dept_id', 'user_id');
+        return $this->belongsToMany(User::class, 'department_user', 'dept_id', 'user_id')->withTimestamps();
     }
 
     public function documents(): BelongsToMany
     {
-        return $this->belongsToMany(Document::class, 'doc_department', 'dept_id', 'doc_id');
+        return $this->belongsToMany(Document::class, 'department_doc', 'dept_id', 'doc_id')->withTimestamps();
     }
 
 }

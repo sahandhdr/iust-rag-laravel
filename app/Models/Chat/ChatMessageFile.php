@@ -10,11 +10,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ChatMessageFile extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = "chat_message_files";
     protected $guarded = [];
-
+    protected function casts(): array
+    {
+        return [
+            'deleted_at' => 'datetime',
+        ];
+    }
     public function chat_message(): BelongsTo
     {
         return $this->belongsTo(ChatMessage::class, 'message_id');

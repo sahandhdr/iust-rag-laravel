@@ -93,8 +93,8 @@ create table department_user(
 	dept_id int, 
   user_id int, 
 
-  index department_user_depatrment_index(dept_id),
-	constraint department_user_depatrment_fk foreign key (dept_id) references departments(id) on delete cascade on update cascade,
+  index department_user_department_index(dept_id),
+	constraint department_user_department_fk foreign key (dept_id) references departments(id) on delete cascade on update cascade,
 	
   index department_user_user_index(user_id),
 	constraint department_user_user_fk foreign key (user_id) references users(id) on delete cascade on update cascade,

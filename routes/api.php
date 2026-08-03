@@ -10,8 +10,8 @@ Route::get('/user', function (Request $request) {
 
 //======================================== authentication ========================================
 
-Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'register']);
-Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login']);
+Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'register'])->middleware('throttle:login');
+Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout']);
 Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword']);
 

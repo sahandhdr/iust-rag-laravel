@@ -17,32 +17,57 @@ class CheckRole
      *
      * @param  Closure(Request): (Response)  $next
      */
-    public function handle(Request $request, Closure $next, $roles = null): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        // بررسی اینکه آیا کاربر وارد سیستم شده است یا خیر
-        if (!Auth::check()) {
-            return $this->errorResponse('Unauthorized', 401);
+        $user = $request->user();
+
+        if (!$user) {
+            return $this->errorResponse('احراز هویت انجام نشده است.', 401);
         }
 
-        // دریافت کاربر وارد شده
-        $user = Auth::user();
+        // support both "role:admin,developer" and "role:admin|developer" style via variadic
+        $required = $this->normalizeList($roles);
 
-        // بررسی نقش کاربر
-        if ($roles) {
-            $roleArray = explode('-', $roles);
-            $hasAnyRole = false;
-            foreach ($roleArray as $role) {
-                if ($user->hasRole(trim($role))) {
-                    $hasAnyRole = true;
+        if ($required === []) {
+            return $next($request);
+        }
+
+        if (method_exists($user, 'hasAnyRole')) {
+            $allowed = $user->hasAnyRole($required);
+        } else {
+            $allowed = false;
+            foreach ($required as $role) {
+                if (method_exists($user, 'hasRole') && $user->hasRole($role)) {
+                    $allowed = true;
                     break;
                 }
             }
-            if (!$hasAnyRole) {
-                return $this->errorResponse('Forbidden', 403);
+        }
+
+        if (!$allowed) {
+            return $this->errorResponse('شما دسترسی لازم (نقش) برای این عملیات را ندارید.', 403);
+        }
+
+        return $next($request);
+    }
+
+    /**
+     * @param  array<int, string>  $roles
+     * @return list<string>
+     */
+    private function normalizeList(array $roles): array
+    {
+        $normalized = [];
+
+        foreach ($roles as $role) {
+            foreach (explode(',', $role) as $part) {
+                $part = strtolower(trim($part));
+                if ($part !== '') {
+                    $normalized[] = $part;
+                }
             }
         }
 
-
-        return $next($request);
+        return array_values(array_unique($normalized));
     }
 }

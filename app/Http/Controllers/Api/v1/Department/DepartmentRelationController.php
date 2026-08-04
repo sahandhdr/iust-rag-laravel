@@ -34,129 +34,28 @@ class DepartmentRelationController extends ApiController
         return $this->sync('departments', 'users', 'dept_user', 'dept_id', 'user_id', $department_id, $user_ids);
     }
 
-    /* ------------------------------| news |------------------------------ */
+    /* ------------------------------| documents |------------------------------ */
     /**
      * Attach a task to department.
      */
-    public function attachNewsToDepartment($department_id, $news_id)
+    public function attachDocumentToDepartment($department_id, $doc_id)
     {
-        return $this->attach('departments', 'news', 'dept_news', 'dept_id', 'news_id', $department_id, $news_id);
+        return $this->attach('departments', 'documents', 'department_doc', 'dept_id', 'doc_id', $department_id, $doc_id);
     }
 
     /**
      * Detach a task from department.
      */
-    public function detachNewsFromDepartment($department_id, $news_id)
+    public function detachDocumentFromDepartment($department_id, $doc_id)
     {
-        return $this->detach('departments', 'news', 'dept_news', 'dept_id', 'news_id', $department_id, $news_id);
+        return $this->detach('departments', 'documents', 'department_doc', 'dept_id', 'doc_id', $department_id, $doc_id);
     }
 
     /**
      * Sync tasks to department.
      */
-    public function syncNewsToDepartment($department_id, $news_ids)
+    public function syncDocumentsToDepartment($department_id, $doc_ids)
     {
-        return $this->sync('departments', 'news', 'dept_news', 'dept_id', 'news_id', $department_id, $news_ids);
-    }
-
-    /* ------------------------------| posts |------------------------------ */
-    /**
-     * Attach a task to department.
-     */
-    public function attachPostToDepartment($department_id, $post_id)
-    {
-        return $this->attach('departments', 'posts', 'dept_post', 'dept_id', 'post_id', $department_id, $post_id);
-    }
-
-    /**
-     * Detach a task from department.
-     */
-    public function detachPostFromDepartment($department_id, $post_id)
-    {
-        return $this->detach('departments', 'posts', 'dept_post', 'dept_id', 'post_id', $department_id, $post_id);
-    }
-
-    /**
-     * Sync tasks to department.
-     */
-    public function syncPostsToDepartment($department_id, $post_ids)
-    {
-        return $this->sync('departments', 'posts', 'dept_post', 'dept_id', 'post_id', $department_id, $post_ids);
-    }
-
-
-    /* ------------------------------| researches |------------------------------ */
-    /**
-     * Attach a task to department.
-     */
-    public function attachResearchToDepartment($department_id, $research_id)
-    {
-        return $this->attach('departments', 'researches', 'dept_research', 'dept_id', 'research_id', $department_id, $research_id);
-    }
-
-    /**
-     * Detach a task from department.
-     */
-    public function detachResearchFromDepartment($department_id, $research_id)
-    {
-        return $this->detach('departments', 'researches', 'dept_research', 'dept_id', 'research_id', $department_id, $research_id);
-    }
-
-    /**
-     * Sync tasks to department.
-     */
-    public function syncResearchesToDepartment($department_id, $research_ids)
-    {
-        return $this->sync('departments', 'researches', 'dept_research', 'dept_id', 'research_id', $department_id, $research_ids);
-    }
-
-    /* ------------------------------| webinars |------------------------------ */
-    /**
-     * Attach a task to department.
-     */
-    public function attachWebinarToDepartment($department_id, $webinar_id)
-    {
-        return $this->attach('departments', 'webinars', 'webinar_dept', 'dept_id', 'webinar_id', $department_id, $webinar_id);
-    }
-
-    /**
-     * Detach a task from department.
-     */
-    public function detachWebinarFromDepartment($department_id, $webinar_id)
-    {
-        return $this->detach('departments', 'webinars', 'webinar_dept', 'dept_id', 'webinar_id', $department_id, $webinar_id);
-    }
-
-    /**
-     * Sync tasks to department.
-     */
-    public function syncWebinarsToDepartment($department_id, $webinar_ids)
-    {
-        return $this->sync('departments', 'webinars', 'webinar_dept', 'dept_id', 'webinar_id', $department_id, $webinar_ids);
-    }
-
-    /* ------------------------------| courses |------------------------------ */
-    /**
-     * Attach a task to department.
-     */
-    public function attachCourseToDepartment($department_id, $course_id)
-    {
-        return $this->attach('departments', 'courses', 'course_dept', 'dept_id', 'course_id', $department_id, $course_id);
-    }
-
-    /**
-     * Detach a task from department.
-     */
-    public function detachCourseFromDepartment($department_id, $course_id)
-    {
-        return $this->detach('departments', 'courses', 'course_dept', 'dept_id', 'course_id', $department_id, $course_id);
-    }
-
-    /**
-     * Sync tasks to department.
-     */
-    public function syncCoursesToDepartment($department_id, $course_ids)
-    {
-        return $this->sync('departments', 'courses', 'course_dept', 'dept_id', 'course_id', $department_id, $course_ids);
+        return $this->sync('departments', 'documents', 'department_doc', 'dept_id', 'doc_id', $department_id, $doc_ids);
     }
 }

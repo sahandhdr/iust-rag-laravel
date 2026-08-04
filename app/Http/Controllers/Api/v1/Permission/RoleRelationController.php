@@ -83,4 +83,29 @@ class RoleRelationController extends Controller
     {
         return $this->sync('roles', 'users', 'role_user', 'role_id', 'user_id', $role_id, $user_ids);
     }
+
+    /* ------------------------------| documents |------------------------------ */
+    /**
+     * Attach a user to role.
+     */
+    public function attachDocumentToRole($role_id, $doc_id)
+    {
+        return $this->attach('roles', 'documents', 'doc_role', 'role_id', 'doc_id', $role_id, $doc_id);
+    }
+
+    /**
+     * Detach a user from role.
+     */
+    public function detachDocumentFromRole($role_id, $doc_id)
+    {
+        return $this->detach('roles', 'documents', 'doc_role', 'role_id', 'doc_id', $role_id, $doc_id);
+    }
+
+    /**
+     * Sync users to role.
+     */
+    public function syncDocumentsToRole($role_id, $doc_ids)
+    {
+        return $this->sync('roles', 'documents', 'doc_role', 'role_id', 'doc_id', $role_id, $doc_ids);
+    }
 }

@@ -66,6 +66,11 @@ Route::get("/v1/role/attach_user/{role_id}/{user_id}", [\App\Http\Controllers\Ap
 Route::get("/v1/role/detach_user/{role_id}/{user_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "detachUserFromRole"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/role/sync_users/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "syncUsersToRole"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
+/* ------------------------------| documents |------------------------------ */
+Route::get("/v1/role/attach_doc/{role_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "attachDocumentToRole"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/role/detach_doc/{role_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "detachDocumentFromRole"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/role/sync_docs/{role_id}", [\App\Http\Controllers\Api\v1\Permission\RoleRelationController::class, "syncDocumentsToRole"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
 
 //======================================== permission ========================================
 //======================================== permission
@@ -83,5 +88,31 @@ Route::post("/v1/permission/sync_roles/{permission_id}", [\App\Http\Controllers\
 
 /* ------------------------------| positions |------------------------------ */
 Route::get("/v1/permission/attach_position/{permission_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "attachPositionToPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::get("/v1/permission/detach_position/{permission_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "detahcPosionFromPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/permission/detach_position/{permission_id}/{position_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "detachPositionFromPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/permission/sync_positions/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "syncPositionsToPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+/* ------------------------------| documents |------------------------------ */
+Route::get("/v1/permission/attach_doc/{permission_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "attachDocumentToPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/permission/detach_doc/{permission_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "detachDocumentFromPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/permission/sync_docs/{permission_id}", [\App\Http\Controllers\Api\v1\Permission\PermissionRelationController::class, "syncDocumentToPermission"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+
+//======================================== departments ========================================
+Route::get("/v1/depts", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/dept/store", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "store"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/show/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "show"])->middleware('auth:sanctum');
+Route::get("/v1/dept/get_all", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "getAllDepartments"])->middleware('auth:sanctum');
+Route::post("/v1/dept/update/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/delete/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/restore/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, ""])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/dept/search", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+
+/* ------------------------------| documents |------------------------------ */
+Route::get("/v1/dept/attach_doc/{dept_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "attachDocumentToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/detach_doc/{dept_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "detachDocumentFromDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/dept/sync_docs/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "syncDocumentsToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+/* ------------------------------| users |------------------------------ */
+Route::get("/v1/dept/attach_doc/{dept_id}/{user_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "attachUserToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/detach_doc/{dept_id}/{user_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "detachUserFromDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/dept/sync_docs/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "syncUsersToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);

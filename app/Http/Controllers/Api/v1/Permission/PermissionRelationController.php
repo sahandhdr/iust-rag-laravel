@@ -46,7 +46,7 @@ class PermissionRelationController extends ApiController
     /**
      * Detach a position from permission.
      */
-    public function detahcPosionFromPermission($permission_id, $position_id)
+    public function detachPositionFromPermission($permission_id, $position_id)
     {
         return $this->detach('permissions', 'positions', 'permission_position', 'permission_id', 'position_id', $permission_id, $position_id);
     }
@@ -57,5 +57,30 @@ class PermissionRelationController extends ApiController
     public function syncPositionsToPermission($permission_id, $position_ids)
     {
         return $this->sync('permissions', 'positions', 'permission_position', 'permission_id', 'position_id', $permission_id, $position_ids);
+    }
+
+    /* ------------------------------| document |------------------------------ */
+    /**
+     * Attach a position to permission.
+     */
+    public function attachDocumentToPermission($permission_id, $doc_id)
+    {
+        return $this->attach('permissions', 'documents', 'doc_permission', 'permission_id', 'doc_id', $permission_id, $doc_id);
+    }
+
+    /**
+     * Detach a position from permission.
+     */
+    public function detachDocumentFromPermission($permission_id, $doc_id)
+    {
+        return $this->detach('permissions', 'documents', 'doc_permission', 'permission_id', 'doc_id', $permission_id, $doc_id);
+    }
+
+    /**
+     * Sync positions to permission
+     */
+    public function syncDocumentToPermission($permission_id, $doc_ids)
+    {
+        return $this->sync('permissions', 'documents', 'doc_permission', 'permission_id', 'doc_id', $permission_id, $doc_ids);
     }
 }

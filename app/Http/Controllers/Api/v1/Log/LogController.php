@@ -102,6 +102,6 @@ class LogController extends ApiController
 
     public function checkExistsLogById($id)
     {
-        return DB::table('logs')->where('id', $id)->exists();
+        return DB::table('audit_logs')->where('id', $id)->exists();
     }
 }

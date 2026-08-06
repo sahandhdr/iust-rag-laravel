@@ -108,6 +108,7 @@ create table department_user(
 create table documents(
 	id int not null auto_increment primary key,
 	file_name varchar(200),
+  file_name_show varchar(200),
   path text,
   extension varchar(200),
   doc_uuid varchar(36) unique not null,

@@ -147,3 +147,31 @@ Route::post("/v1/doc/sync_departments/{doc_id}", [\App\Http\Controllers\Api\v1\D
 Route::get("/v1/doc/attach_permission/{doc_id}/{permission_id}", [\App\Http\Controllers\Api\v1\Document\DocumentRelationController::class, "attachPermissionToDocument"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/detach_permission/{doc_id}/{permission_id}", [\App\Http\Controllers\Api\v1\Document\DocumentRelationController::class, "detachPermissionFromDocument"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/sync_permissions/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentRelationController::class, "syncPermissionsToDocument"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+
+
+//======================================== chat ========================================
+//======================================== session
+Route::get("/v1/chat/sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/chat/user_sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "indexByUser"])->middleware('auth:sanctum');
+Route::get("/v1/chat/session/show/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/chat/session/update/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "updateTitle"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/session/delete/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/chat/session/search", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+
+
+//======================================== message
+Route::get("/v1/chat/message/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "indexBySession"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/chat/message/store", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "storeMessage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/message/show/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/chat/message/update/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "update"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/delete/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/message/feedback/{msg_id}/{feedback}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "setFeedbackOnMessage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/chat/message/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "search"])->middleware('auth:sanctum');
+
+
+//======================================== message_files
+Route::post("/v1/chat/message/upload", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "uploadFile"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/file/get", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "get"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/file/get_base_64", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "getBase64"])->middleware('auth:sanctum');
+Route::post("/v1/chat/message/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "searchFile"])->middleware('auth:sanctum');

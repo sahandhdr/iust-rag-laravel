@@ -17,17 +17,17 @@ Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\
 
 
 //======================================== users ========================================
-//Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+//Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/user/store", [\App\Http\Controllers\Api\v1\User\UserController::class, "store"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/upload/profile_pic", [\App\Http\Controllers\Api\v1\User\UserController::class, "uploadPic"])->middleware('auth:sanctum');
 Route::get("/v1/user/show/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "show"])->middleware('auth:sanctum');
 
-Route::post("/v1/user/update/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/user/update/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 Route::get("/v1/user/delete/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/user/restore/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "restore"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/user/search", [\App\Http\Controllers\Api\v1\User\UserController::class, "searchUser"])->middleware('auth:sanctum');
-Route::get("/v1/user/remove_pic/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "removeUserPicFromStorage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/user/remove_pic/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "removeUserPicFromStorage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 Route::post("/v1/user/change/pass/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "changePassword"])->middleware('auth:sanctum');
 Route::get('/v1/user/check_permission/{user_id}/{permission}',[\App\Http\Controllers\Api\v1\User\UserController::class, "checkPermissionExists"]);
 
@@ -105,7 +105,7 @@ Route::get("/v1/dept/get_all", [\App\Http\Controllers\Api\v1\Department\Departme
 Route::post("/v1/dept/update/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/dept/delete/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/dept/restore/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "restore"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/dept/search", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/dept/search", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 
 /* ------------------------------| documents |------------------------------ */
 Route::get("/v1/dept/attach_doc/{dept_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "attachDocumentToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
@@ -124,7 +124,7 @@ Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentCon
 Route::get("/v1/doc/show/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/update/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/delete/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 
 Route::get("/v1/doc/get/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "get"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/get_base64/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "getBase64"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
@@ -154,19 +154,19 @@ Route::post("/v1/doc/sync_permissions/{doc_id}", [\App\Http\Controllers\Api\v1\D
 //======================================== session
 Route::get("/v1/chat/sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/chat/user_sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "indexByUser"])->middleware('auth:sanctum');
-Route::get("/v1/chat/session/show/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
-Route::post("/v1/chat/session/update/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "updateTitle"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
-Route::get("/v1/chat/session/delete/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
-Route::post("/v1/chat/session/search", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/session/show/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "show"])->middleware('auth:sanctum');
+Route::post("/v1/chat/session/update/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "updateTitle"])->middleware('auth:sanctum');
+Route::get("/v1/chat/session/delete/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "destroy"])->middleware('auth:sanctum');
+Route::post("/v1/chat/session/search", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "search"])->middleware('auth:sanctum');
 
 
 //======================================== message
-Route::get("/v1/chat/message/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "indexBySession"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/chat/message/store", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "storeMessage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
-Route::get("/v1/chat/message/show/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/message/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "indexBySession"])->middleware('auth:sanctum');
+Route::post("/v1/chat/message/store", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "storeMessage"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/show/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "show"])->middleware('auth:sanctum');
 Route::post("/v1/chat/message/update/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "update"])->middleware('auth:sanctum');
-Route::get("/v1/chat/message/delete/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
-Route::get("/v1/chat/message/feedback/{msg_id}/{feedback}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "setFeedbackOnMessage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,user']);
+Route::get("/v1/chat/message/delete/{msg_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "destroy"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/feedback/{msg_id}/{feedback}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "setFeedbackOnMessage"])->middleware('auth:sanctum');
 Route::post("/v1/chat/message/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageController::class, "search"])->middleware('auth:sanctum');
 
 

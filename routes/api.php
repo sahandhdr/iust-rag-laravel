@@ -171,7 +171,7 @@ Route::post("/v1/chat/message/search", [\App\Http\Controllers\Api\v1\Chat\ChatMe
 
 
 //======================================== message_files
-Route::post("/v1/chat/message/upload", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "uploadFile"])->middleware('auth:sanctum');
-Route::get("/v1/chat/message/file/get", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "get"])->middleware('auth:sanctum');
-Route::get("/v1/chat/message/file/get_base_64", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "getBase64"])->middleware('auth:sanctum');
-Route::post("/v1/chat/message/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "searchFile"])->middleware('auth:sanctum');
+Route::post("/v1/chat/message/upload/{message_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "uploadFile"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/file/get/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "get"])->middleware('auth:sanctum');
+Route::get("/v1/chat/message/file/get_base_64/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "getBase64"])->middleware('auth:sanctum');
+Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "searchFile"])->middleware('auth:sanctum');

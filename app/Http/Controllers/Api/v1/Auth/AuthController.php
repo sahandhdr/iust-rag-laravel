@@ -23,7 +23,7 @@ class AuthController extends ApiController
             "surname" => 'required',
             "password" => 'required',
             "email" => 'required|unique:users',
-            "mobile" => 'required|unique:users',
+            "username" => 'required|unique:users',
             "birthday" => 'nullable',
             "gender" => 'required',
             "ncode" => 'required',
@@ -34,7 +34,7 @@ class AuthController extends ApiController
         if ($validator->fails())
             return $this->errorResponse($validator->errors(), 422);
 
-        if (!User::where("mobile", $request->mobile)->exists() && !User::where("email", $request->email)->exists()) {
+        if (!User::where("username", $request->username)->exists() && !User::where("email", $request->email)->exists()) {
             $user = new User();
             $user->name = $request->name;
             $user->surname = $request->surname;
@@ -60,14 +60,14 @@ class AuthController extends ApiController
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(),[
-            'mobile' => 'required',
+            'username' => 'required',
             'password' => 'required'
         ]);
 
         if ($validator->fails())
             return $this->errorResponse($validator->messages(), 422);
 
-        $user = User::with('roles')->where('mobile', $request->mobile)->first();
+        $user = User::with('roles')->where('username', $request->username)->first();
 
         if (!$user)
             return $this->errorResponse('user-notFound', 404);
@@ -168,5 +168,31 @@ class AuthController extends ApiController
                 $this->errorResponse('user-notFound', 404);
         }
         return  $this->errorResponse('refused', 500);
+    }
+
+    public function verifyToken(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return $this->errorResponse('unauthenticated', 401);
+        }
+
+        $info = $this->getUserAclInfo($user->id);
+
+        if (isset($info['code']) && $info['code'] === 404) {
+            return $this->errorResponse('user-notFound', 404);
+        }
+
+        if (empty($info['roles'])) {
+            return $this->errorResponse('user-has-no-role', 403);
+        }
+
+        return $this->successResponse([
+            'user_id'     => $info['user_id'],
+            'username'    => $info['username'],
+            'roles'       => $info['roles'],
+            'departments' => $info['departments'],
+            'permissions' => $info['permissions'],
+        ], 200, 'token-valid');
     }
 }

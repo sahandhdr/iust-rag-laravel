@@ -14,7 +14,8 @@ Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthControll
 Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout']);
 Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword']);
-
+//Route::match(['get', 'post'], '/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
+Route::post('/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
 
 //======================================== users ========================================
 //Route::get("/v1/users", [\App\Http\Controllers\Api\v1\User\UserController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
@@ -175,3 +176,9 @@ Route::post("/v1/chat/message/upload/{message_id}", [\App\Http\Controllers\Api\v
 Route::get("/v1/chat/message/file/get/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "get"])->middleware('auth:sanctum');
 Route::get("/v1/chat/message/file/get_base_64/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "getBase64"])->middleware('auth:sanctum');
 Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "searchFile"])->middleware('auth:sanctum');
+
+
+
+//======================================== rag ========================================
+Route::post('/v1/rag/ask', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'ask'])->middleware('auth:sanctum')->middleware('throttle:rag');
+Route::post('/v1/rag/ask-with-file', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askWithFile'])->middleware('auth:sanctum')->middleware('throttle:rag');

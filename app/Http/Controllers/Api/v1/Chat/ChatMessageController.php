@@ -136,7 +136,10 @@ class ChatMessageController extends ApiController
 
         if ($this->checkExistsMessageById($id))
         {
-            $message = ChatMessage::where('id', $id)->whereNull('deleted_at')->first();
+            if (!$this->authorizeMessageByUserId($id)['status'] == 'success')
+                return $this->errorResponse('user-notAuthorized', 403);
+
+            $message = ChatMessage::where(['id' => $id])->whereNull('deleted_at')->first();
             if ($request->input('content')) $message->content = $request->input('content');
             if ($request->feedback) $message->feedback = $request->feedback;
 

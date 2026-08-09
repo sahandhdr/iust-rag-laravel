@@ -122,7 +122,7 @@ class ChatSessionController extends ApiController
             if ($validator->fails())
                 return  response()->json(["status" => "validation-error", "errors" => $validator->errors()]);
 
-            $query = ChatSession::select("*");
+            $query = ChatSession::where('user_id', Auth::id())->with('chat_messages')->select("*");
             if ($request->title != null) $query->where("title", "like", "%".$request->title."%");
 
             return $query->exists() ?

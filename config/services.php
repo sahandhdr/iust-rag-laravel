@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'python' => [
+        'base_url' => env('PYTHON_RAG_URL', 'http://127.0.0.1:8001'),
+        'timeout'  => (int) env('PYTHON_RAG_TIMEOUT', 60),
+    ],
+
 ];

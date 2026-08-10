@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\v1\Rag;
 
 use App\Http\Controllers\Api\v1\ApiController;
+use App\Traits\v1\ApiInfo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Validator;
 
 class RagController extends ApiController
 {
+    use ApiInfo;
+
     private string $pythonBaseUrl;
     private int $timeout;
 
@@ -19,32 +22,46 @@ class RagController extends ApiController
         $this->timeout = (int) config('services.python.timeout', 60);
     }
 
-    /**
-     * Proxy سوال به سرویس Python RAG (غیرstream).
-     * ذخیره Chat در قدم بعد اضافه می‌شود.
-     */
     public function ask(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'          => 'required|string|max:2000',
-            'session_id'     => 'nullable|string',
-            'msg_id'         => 'nullable|string|max:50',
-            'selected_text'  => 'nullable|string',
+            'query'         => 'required|string|max:2000',
+            'session_id'    => 'required|string',
+            'msg_id'        => 'nullable|string|max:50',
+            'selected_text' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return $this->errorResponse($validator->messages(), 422);
         }
 
+        $user = $request->user();
+        if (!$user) {
+            return $this->errorResponse('unauthenticated', 401);
+        }
+
+        $info = $this->getUserAclInfo($user->id);
+        if (isset($info['code']) && $info['code'] === 404) {
+            return $this->errorResponse('user-notFound', 404);
+        }
+        if (empty($info['roles'])) {
+            return $this->errorResponse('user-has-no-role', 403);
+        }
+
         $validated = $validator->validated();
 
         $payload = [
-            'query' => $validated['query'],
+            'query'      => $validated['query'],
+            'session_id' => $validated['session_id'],
+            'user_context' => [
+                'user_id'     => $info['user_id'],
+                'username'    => $info['username'],
+                'roles'       => $info['roles'],
+                'departments' => $info['departments'],
+                'permissions' => $info['permissions'],
+            ],
         ];
 
-        if (!empty($validated['session_id'])) {
-            $payload['session_id'] = $validated['session_id'];
-        }
         if (!empty($validated['msg_id'])) {
             $payload['msg_id'] = $validated['msg_id'];
         }
@@ -57,6 +74,7 @@ class RagController extends ApiController
                 ->acceptJson()
                 ->asJson();
 
+            // اختیاری؛ برای این مسیر دیگر لازم نیست Python به Laravel برگردد
             $token = $request->bearerToken();
             if ($token) {
                 $http = $http->withToken($token);
@@ -80,21 +98,13 @@ class RagController extends ApiController
                 );
             }
 
-            $data = $response->json();
-
-            return $this->successResponse($data ?? [], 200, 'rag-ok');
+            return $this->successResponse($response->json() ?? [], 200, 'rag-ok');
         } catch (\Throwable $e) {
-            Log::error('RAG ask exception: ' . $e->getMessage(), [
-                'exception' => $e,
-            ]);
-
+            Log::error('RAG ask exception: ' . $e->getMessage(), ['exception' => $e]);
             return $this->errorResponse('rag-connection-error', 500);
         }
     }
 
-    /**
-     * بعداً: سوال + فایل.
-     */
     public function askWithFile(Request $request)
     {
         return $this->errorResponse('not-implemented', 501);

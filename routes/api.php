@@ -155,6 +155,7 @@ Route::post("/v1/doc/sync_permissions/{doc_id}", [\App\Http\Controllers\Api\v1\D
 //======================================== session
 Route::get("/v1/chat/sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/chat/user_sessions", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "indexByUser"])->middleware('auth:sanctum');
+Route::post("/v1/chat/session/store", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "store"])->middleware('auth:sanctum');
 Route::get("/v1/chat/session/show/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "show"])->middleware('auth:sanctum');
 Route::post("/v1/chat/session/update/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "updateTitle"])->middleware('auth:sanctum');
 Route::get("/v1/chat/session/delete/{session_id}", [\App\Http\Controllers\Api\v1\Chat\ChatSessionController::class, "destroy"])->middleware('auth:sanctum');
@@ -176,7 +177,6 @@ Route::post("/v1/chat/message/upload/{message_id}", [\App\Http\Controllers\Api\v
 Route::get("/v1/chat/message/file/get/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "get"])->middleware('auth:sanctum');
 Route::get("/v1/chat/message/file/get_base_64/{file_id}", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "getBase64"])->middleware('auth:sanctum');
 Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\ChatMessageFileController::class, "searchFile"])->middleware('auth:sanctum');
-
 
 
 //======================================== rag ========================================

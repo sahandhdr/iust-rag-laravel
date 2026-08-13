@@ -40,6 +40,23 @@ class ChatSessionController extends ApiController
         return $this->errorResponse('no-session', 404);
     }
 
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'title' => 'required',
+        ]);
+
+        if ($validator->fails())
+            return $this->errorResponse($validator->messages(), 422);
+
+        $session = new ChatSession();
+        $session->title = $request->title;
+        $session->user_id = Auth::id();
+
+        if ($session->save())
+            return $this->successResponse(new ChatSessionResource($session), 200);
+        return $this->errorResponse('save-failed', 500);
+    }
     public function show($id)
     {
         if ($this->checkExistsSessionById($id))

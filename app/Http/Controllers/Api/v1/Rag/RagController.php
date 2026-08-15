@@ -130,7 +130,7 @@ class RagController extends ApiController
                 'processing_time'   => $data['processing_time'] ?? null,
                 'human_message_id'  => $human->id,
                 'ai_message_id'     => $ai->id,
-                'msg_id'            => $humanMsgId,
+//                'msg_id'            => $humanMsgId,
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG ask exception: ' . $e->getMessage(), ['exception' => $e]);
@@ -245,7 +245,7 @@ class RagController extends ApiController
                 'file_processed'   => $data['file_processed'] ?? $file->getClientOriginalName(),
                 'human_message_id' => $human->id,
                 'ai_message_id'    => $ai->id,
-                'msg_id'           => $humanMsgId,
+//                'msg_id'           => $humanMsgId,
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG askWithFile exception: ' . $e->getMessage(), ['exception' => $e]);

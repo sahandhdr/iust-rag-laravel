@@ -75,7 +75,7 @@ class RagController extends ApiController
         $payload = [
             'query'      => $validated['query'],
             'session_id' => (string) $sessionId,
-            'msg_id'     => $humanMsgId,
+//            'msg_id'     => $humanMsgId,
             'user_context' => [
                 'user_id'     => $info['user_id'],
                 'username'    => $info['username'],

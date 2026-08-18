@@ -7,6 +7,7 @@ use App\Models\Chat\ChatMessage;
 use App\Models\Chat\ChatMessageFile;
 use App\Models\Chat\ChatSession;
 use App\Traits\v1\ApiInfo;
+use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RagController extends ApiController
 {
-    use ApiInfo;
+    use ApiInfo, Auditable;
 
     private string $pythonBaseUrl;
     private int $timeout;
@@ -99,6 +100,14 @@ class RagController extends ApiController
                     'status' => $response->status(),
                     'body'   => $response->body(),
                 ]);
+
+                $this->audit('rag.ask', 'chat_session', $sessionId, [
+                    'status'           => 'failed',
+                    'reason'           => 'python-rag-failed',
+                    'python_status'    => $response->status(),
+                    'human_message_id' => $human->id,
+                ]);
+
                 return $this->errorResponse(
                     'python-rag-failed',
                     $response->status() >= 400 ? $response->status() : 500,
@@ -121,7 +130,24 @@ class RagController extends ApiController
             $ai->content = is_string($answer) ? $answer : json_encode($answer, JSON_UNESCAPED_UNICODE);
             $ai->msg_id = null;
             $ai->sources = $sources;
-            $ai->save();
+
+            if (!$ai->save()) {
+                $this->audit('rag.ask', 'chat_session', $sessionId, [
+                    'status'           => 'failed',
+                    'reason'           => 'ai-message-save-failed',
+                    'human_message_id' => $human->id,
+                ]);
+
+                return $this->errorResponse('ai-message-save-failed', 500, [
+                    'human_message_id' => $human->id,
+                ]);
+            }
+
+            $this->audit('rag.ask', 'chat_session', $sessionId, [
+                'status'           => 'ok',
+                'human_message_id' => $human->id,
+                'ai_message_id'    => $ai->id,
+            ]);
 
             return $this->successResponse([
                 'answer'           => $answer,
@@ -133,6 +159,14 @@ class RagController extends ApiController
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG ask exception: ' . $e->getMessage(), ['exception' => $e]);
+
+            $this->audit('rag.ask', 'chat_session', $sessionId, [
+                'status'           => 'failed',
+                'reason'           => 'rag-connection-error',
+                'human_message_id' => $human->id,
+                'error'            => $e->getMessage(),
+            ]);
+
             return $this->errorResponse('rag-connection-error', 500, [
                 'human_message_id' => $human->id,
             ]);
@@ -141,8 +175,6 @@ class RagController extends ApiController
 
     /**
      * SSE proxy → Python /api/v1/chat/ask/stream
-     * Events forwarded as-is; Laravel adds initial meta with human_message_id
-     * and persists AI message when Python sends event: done
      */
     public function askStream(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
@@ -205,14 +237,14 @@ class RagController extends ApiController
         $pythonUrl = $this->pythonBaseUrl . '/api/v1/chat/ask/stream';
         $timeout = $this->timeout;
         $humanId = $human->id;
+        $controller = $this;
 
-        return response()->stream(function () use ($payload, $pythonUrl, $timeout, $sessionId, $humanId) {
-            // Laravel meta (extra to Python meta)
+        return response()->stream(function () use ($payload, $pythonUrl, $timeout, $sessionId, $humanId, $controller) {
             echo "event: meta\n";
             echo 'data: ' . json_encode([
-                    'session_id'         => (string) $sessionId,
-                    'human_message_id'   => $humanId,
-                    'gateway'            => 'laravel',
+                    'session_id'       => (string) $sessionId,
+                    'human_message_id' => $humanId,
+                    'gateway'          => 'laravel',
                 ], JSON_UNESCAPED_UNICODE) . "\n\n";
             if (function_exists('ob_flush')) {
                 @ob_flush();
@@ -222,6 +254,7 @@ class RagController extends ApiController
             $sourcesBuffer = null;
             $currentEvent = null;
             $dataLines = [];
+            $persisted = false;
 
             try {
                 $response = Http::timeout($timeout)
@@ -233,22 +266,29 @@ class RagController extends ApiController
                     ->post($pythonUrl, $payload);
 
                 if ($response->failed()) {
-                    $err = [
-                        'message' => 'python-rag-failed',
-                        'status'  => $response->status(),
-                    ];
+                    $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
+                        'status'           => 'failed',
+                        'reason'           => 'python-rag-failed',
+                        'python_status'    => $response->status(),
+                        'human_message_id' => $humanId,
+                    ]);
+
                     echo "event: error\n";
-                    echo 'data: ' . json_encode($err, JSON_UNESCAPED_UNICODE) . "\n\n";
+                    echo 'data: ' . json_encode([
+                            'message' => 'python-rag-failed',
+                            'status'  => $response->status(),
+                        ], JSON_UNESCAPED_UNICODE) . "\n\n";
                     if (function_exists('ob_flush')) {
                         @ob_flush();
                     }
                     flush();
+
                     return;
                 }
 
                 $body = $response->toPsrResponse()->getBody();
-
                 $buffer = '';
+
                 while (!$body->eof()) {
                     $chunk = $body->read(1024);
                     if ($chunk === '' || $chunk === false) {
@@ -256,14 +296,12 @@ class RagController extends ApiController
                         continue;
                     }
 
-                    // pipe raw bytes to client
                     echo $chunk;
                     if (function_exists('ob_flush')) {
                         @ob_flush();
                     }
                     flush();
 
-                    // parse SSE for done / sources (for DB persist)
                     $buffer .= $chunk;
                     while (($pos = strpos($buffer, "\n")) !== false) {
                         $line = substr($buffer, 0, $pos);
@@ -283,7 +321,7 @@ class RagController extends ApiController
                                 $sourcesBuffer = $decoded;
                             }
 
-                            if ($currentEvent === 'done' && is_array($decoded)) {
+                            if ($currentEvent === 'done' && is_array($decoded) && !$persisted) {
                                 $answer = $decoded['answer'] ?? '';
                                 try {
                                     $ai = new ChatMessage();
@@ -296,7 +334,14 @@ class RagController extends ApiController
                                     $ai->sources = $sourcesBuffer;
                                     $ai->save();
 
-                                    // optional extra event for frontend
+                                    $persisted = true;
+
+                                    $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
+                                        'status'           => 'ok',
+                                        'human_message_id' => $humanId,
+                                        'ai_message_id'    => $ai->id,
+                                    ]);
+
                                     echo "event: persisted\n";
                                     echo 'data: ' . json_encode([
                                             'ai_message_id'    => $ai->id,
@@ -308,7 +353,22 @@ class RagController extends ApiController
                                     flush();
                                 } catch (\Throwable $e) {
                                     Log::error('RAG stream AI persist failed: ' . $e->getMessage());
+                                    $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
+                                        'status'           => 'failed',
+                                        'reason'           => 'ai-persist-failed',
+                                        'human_message_id' => $humanId,
+                                        'error'            => $e->getMessage(),
+                                    ]);
                                 }
+                            }
+
+                            if ($currentEvent === 'error') {
+                                $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
+                                    'status'           => 'failed',
+                                    'reason'           => 'python-stream-error',
+                                    'human_message_id' => $humanId,
+                                    'detail'           => $decoded,
+                                ]);
                             }
 
                             $currentEvent = null;
@@ -318,6 +378,14 @@ class RagController extends ApiController
                 }
             } catch (\Throwable $e) {
                 Log::error('RAG askStream exception: ' . $e->getMessage(), ['exception' => $e]);
+
+                $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
+                    'status'           => 'failed',
+                    'reason'           => 'rag-connection-error',
+                    'human_message_id' => $humanId,
+                    'error'            => $e->getMessage(),
+                ]);
+
                 echo "event: error\n";
                 echo 'data: ' . json_encode([
                         'message' => 'rag-connection-error',
@@ -370,7 +438,6 @@ class RagController extends ApiController
         $query = $request->input('query');
         $uploaded = $request->file('file');
 
-        // ---------- 1) human ----------
         $human = new ChatMessage();
         $human->session_id = $sessionId;
         $human->role = 'human';
@@ -382,21 +449,24 @@ class RagController extends ApiController
             return $this->errorResponse('human-message-save-failed', 500);
         }
 
-        // ---------- 2) file on disk via FileManagerRepo ----------
         $dir = 'messages/' . $human->id . '/files';
         $fileManager = new FileManagerRepo();
         $insertResult = $fileManager->insertFile($uploaded, $dir, 'public');
 
         if (!isset($insertResult['status']) || $insertResult['status'] !== 'ok') {
+            $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                'status'           => 'failed',
+                'reason'           => 'file-upload-failed',
+                'human_message_id' => $human->id,
+            ]);
+
             return $this->errorResponse('file-upload-failed', 500, [
                 'human_message_id' => $human->id,
             ]);
         }
 
-        // path نسبی کامل روی disk public (مثل بقیه پروژه)
         $relativePath = rtrim($insertResult['path'], '/') . '/' . $insertResult['filename'];
 
-        // ---------- 3) chat_message_files row ----------
         $messageFile = new ChatMessageFile();
         $messageFile->path = $relativePath;
         $messageFile->extension = $insertResult['extension'] ?? $uploaded->getClientOriginalExtension();
@@ -405,6 +475,13 @@ class RagController extends ApiController
 
         if (!$messageFile->save()) {
             $fileManager->removeFileFromStorage($relativePath, 'public');
+
+            $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                'status'           => 'failed',
+                'reason'           => 'file-record-save-failed',
+                'human_message_id' => $human->id,
+            ]);
+
             return $this->errorResponse('file-record-save-failed', 500, [
                 'human_message_id' => $human->id,
             ]);
@@ -419,7 +496,6 @@ class RagController extends ApiController
         ], JSON_UNESCAPED_UNICODE);
 
         try {
-            // خواندن باینری از storage ذخیره‌شده
             $fileBinary = Storage::disk('public')->get($relativePath);
             $attachName = $messageFile->file_name;
 
@@ -436,14 +512,23 @@ class RagController extends ApiController
                     'status' => $response->status(),
                     'body'   => $response->body(),
                 ]);
+
+                $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                    'status'               => 'failed',
+                    'reason'               => 'python-rag-failed',
+                    'python_status'        => $response->status(),
+                    'human_message_id'     => $human->id,
+                    'chat_message_file_id' => $messageFile->id,
+                ]);
+
                 return $this->errorResponse(
                     'python-rag-failed',
                     $response->status() >= 400 ? $response->status() : 500,
                     [
-                        'python_status'          => $response->status(),
-                        'python_body'            => $response->json() ?? $response->body(),
-                        'human_message_id'       => $human->id,
-                        'chat_message_file_id'   => $messageFile->id,
+                        'python_status'        => $response->status(),
+                        'python_body'          => $response->json() ?? $response->body(),
+                        'human_message_id'     => $human->id,
+                        'chat_message_file_id' => $messageFile->id,
                     ]
                 );
             }
@@ -453,7 +538,6 @@ class RagController extends ApiController
             $answer = $data['answer'] ?? '';
             $sources = $data['sources'] ?? null;
 
-            // ---------- 4) ai ----------
             $ai = new ChatMessage();
             $ai->session_id = $sessionId;
             $ai->role = 'ai';
@@ -462,12 +546,27 @@ class RagController extends ApiController
             $ai->sources = $sources;
 
             if (!$ai->save()) {
+                $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                    'status'               => 'failed',
+                    'reason'               => 'ai-message-save-failed',
+                    'human_message_id'     => $human->id,
+                    'chat_message_file_id' => $messageFile->id,
+                ]);
+
                 return $this->errorResponse('ai-message-save-failed', 500, [
                     'human_message_id'     => $human->id,
                     'chat_message_file_id' => $messageFile->id,
                     'answer'               => $answer,
                 ]);
             }
+
+            $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                'status'               => 'ok',
+                'human_message_id'     => $human->id,
+                'ai_message_id'        => $ai->id,
+                'chat_message_file_id' => $messageFile->id,
+                'file_name'            => $messageFile->file_name,
+            ]);
 
             return $this->successResponse([
                 'answer'               => $answer,
@@ -488,6 +587,15 @@ class RagController extends ApiController
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG askWithFile exception: ' . $e->getMessage(), ['exception' => $e]);
+
+            $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
+                'status'               => 'failed',
+                'reason'               => 'rag-connection-error',
+                'human_message_id'     => $human->id,
+                'chat_message_file_id' => $messageFile->id ?? null,
+                'error'                => $e->getMessage(),
+            ]);
+
             return $this->errorResponse('rag-connection-error', 500, [
                 'human_message_id'     => $human->id,
                 'chat_message_file_id' => $messageFile->id ?? null,

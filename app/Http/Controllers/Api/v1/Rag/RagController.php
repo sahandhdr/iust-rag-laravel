@@ -145,7 +145,6 @@ class RagController extends ApiController
         $validator = Validator::make($request->all(), [
             'query'      => 'required|string|max:2000',
             'session_id' => 'required',
-            'msg_id'     => 'nullable|string|max:50',
             'file'       => 'required|file|max:20480',
         ]);
 
@@ -172,14 +171,13 @@ class RagController extends ApiController
             return $sessionCheck;
         }
 
-        $humanMsgId = $request->input('msg_id') ?: (string) Str::uuid();
         $query = $request->input('query');
 
         $human = new ChatMessage();
         $human->session_id = $sessionId;
         $human->role = 'human';
         $human->content = $query;
-        $human->msg_id = $humanMsgId;
+        $human->msg_id = null; // Phase 1: لازم نیست
         $human->sources = null;
         if (!$human->save()) {
             return $this->errorResponse('human-message-save-failed', 500);
@@ -204,8 +202,8 @@ class RagController extends ApiController
                 ->post($this->pythonBaseUrl . '/api/v1/chat/ask_with_file', [
                     'query'        => $query,
                     'session_id'   => (string) $sessionId,
-                    'msg_id'       => $humanMsgId,
                     'user_context' => $userContextJson,
+                    // msg_id عمداً ارسال نمی‌شود
                 ]);
 
             if ($response->failed()) {
@@ -217,8 +215,8 @@ class RagController extends ApiController
                     'python-rag-failed',
                     $response->status() >= 400 ? $response->status() : 500,
                     [
-                        'python_status' => $response->status(),
-                        'python_body'   => $response->json() ?? $response->body(),
+                        'python_status'    => $response->status(),
+                        'python_body'      => $response->json() ?? $response->body(),
                         'human_message_id' => $human->id,
                     ]
                 );
@@ -233,7 +231,7 @@ class RagController extends ApiController
             $ai->session_id = $sessionId;
             $ai->role = 'ai';
             $ai->content = is_string($answer) ? $answer : json_encode($answer, JSON_UNESCAPED_UNICODE);
-            $ai->msg_id = (string) Str::uuid();
+            $ai->msg_id = null;
             $ai->sources = $sources;
             $ai->save();
 
@@ -245,7 +243,6 @@ class RagController extends ApiController
                 'file_processed'   => $data['file_processed'] ?? $file->getClientOriginalName(),
                 'human_message_id' => $human->id,
                 'ai_message_id'    => $ai->id,
-//                'msg_id'           => $humanMsgId,
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG askWithFile exception: ' . $e->getMessage(), ['exception' => $e]);
@@ -254,7 +251,7 @@ class RagController extends ApiController
             ]);
         }
     }
-
+    
     /**
      * @return true|\Illuminate\Http\JsonResponse
      */

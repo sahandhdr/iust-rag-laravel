@@ -34,7 +34,7 @@ class RagController extends ApiController
     {
         $validator = Validator::make($request->all(), [
             'query'         => 'required|string|max:2000',
-            'session_id'    => 'required',
+            'session_id'    => 'nullable',
             'msg_id'        => 'nullable|string|max:50',
             'selected_text' => 'nullable|string',
         ]);
@@ -57,11 +57,14 @@ class RagController extends ApiController
         }
 
         $validated = $validator->validated();
-        $sessionId = $validated['session_id'];
 
-        $sessionCheck = $this->authorizeSession($sessionId, $user->id);
-        if ($sessionCheck !== true) {
-            return $sessionCheck;
+        [$sessionId, $sessionOk] = $this->resolveOrCreateSession(
+            $validated['session_id'] ?? null,
+            $user->id,
+            $validated['query']
+        );
+        if ($sessionOk !== true) {
+            return $sessionOk;
         }
 
         $human = new ChatMessage();
@@ -180,7 +183,7 @@ class RagController extends ApiController
     {
         $validator = Validator::make($request->all(), [
             'query'         => 'required|string|max:2000',
-            'session_id'    => 'required',
+            'session_id'    => 'nullable',
             'selected_text' => 'nullable|string',
         ]);
 
@@ -202,11 +205,14 @@ class RagController extends ApiController
         }
 
         $validated = $validator->validated();
-        $sessionId = $validated['session_id'];
 
-        $sessionCheck = $this->authorizeSession($sessionId, $user->id);
-        if ($sessionCheck !== true) {
-            return $sessionCheck;
+        [$sessionId, $sessionOk] = $this->resolveOrCreateSession(
+            $validated['session_id'] ?? null,
+            $user->id,
+            $validated['query']
+        );
+        if ($sessionOk !== true) {
+            return $sessionOk;
         }
 
         $human = new ChatMessage();
@@ -408,7 +414,7 @@ class RagController extends ApiController
     {
         $validator = Validator::make($request->all(), [
             'query'      => 'required|string|max:2000',
-            'session_id' => 'required',
+            'session_id' => 'nullable',
             'file'       => 'required|file|max:20480',
         ]);
 
@@ -429,14 +435,17 @@ class RagController extends ApiController
             return $this->errorResponse('user-has-no-role', 403);
         }
 
-        $sessionId = $request->input('session_id');
-        $sessionCheck = $this->authorizeSession($sessionId, $user->id);
-        if ($sessionCheck !== true) {
-            return $sessionCheck;
-        }
-
         $query = $request->input('query');
         $uploaded = $request->file('file');
+
+        [$sessionId, $sessionOk] = $this->resolveOrCreateSession(
+            $request->input('session_id'),
+            $user->id,
+            $query
+        );
+        if ($sessionOk !== true) {
+            return $sessionOk;
+        }
 
         $human = new ChatMessage();
         $human->session_id = $sessionId;
@@ -601,6 +610,42 @@ class RagController extends ApiController
                 'chat_message_file_id' => $messageFile->id ?? null,
             ]);
         }
+    }
+
+    /**
+     * session_id داده شده → authorize
+     * خالی / null → ساخت session جدید برای user
+     *
+     * @return array{0: int|string|null, 1: true|\Illuminate\Http\JsonResponse}
+     */
+    private function resolveOrCreateSession($sessionId, int $userId, ?string $query = null): array
+    {
+        if ($sessionId !== null && $sessionId !== '') {
+            $check = $this->authorizeSession($sessionId, $userId);
+            if ($check !== true) {
+                return [null, $check];
+            }
+
+            return [$sessionId, true];
+        }
+
+        $session = new ChatSession();
+        $session->user_id = $userId;
+        $title = $query ? mb_substr(trim($query), 0, 30) : null;
+        if ($title !== null && $title !== '') {
+            $session->title = $title;
+        }
+
+        if (!$session->save()) {
+            return [null, $this->errorResponse('session-create-failed', 500)];
+        }
+
+        $this->audit('chat.session_auto_create', 'chat_session', $session->id, [
+            'user_id' => $userId,
+            'title'   => $session->title,
+        ]);
+
+        return [$session->id, true];
     }
 
     /**

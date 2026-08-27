@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Utility\PythonDocumentSync;
 
 class DocumentController extends ApiController
 {
@@ -164,22 +165,71 @@ class DocumentController extends ApiController
         return  $this->errorResponse('refused', 500);
     }
 
+//    public function destroy($doc_id)
+//    {
+//        if ($this->checkExistsDocumentById($doc_id))
+//        {
+//            $file_path = Document::where("id", $doc_id)->first()->path;
+//            if (Storage::disk('public')->delete($file_path))
+//            {
+//                if (DB::table('documents')->where("id", $doc_id)->delete())
+//                    return $this->successResponse('',200, 'remove-success');
+//                return $this->errorResponse('path-delete-failed', 500);
+//            }
+//            return $this->errorResponse('remove-failed', 500);
+//        }
+//        return $this->errorResponse("doc-notFound", 404);
+//    }
+
     public function destroy($doc_id)
     {
-        if ($this->checkExistsDocumentById($doc_id))
-        {
-            $file_path = Document::where("id", $doc_id)->first()->path;
-            if (Storage::disk('public')->delete($file_path))
-            {
-                if (DB::table('documents')->where("id", $doc_id)->delete())
-                    return $this->successResponse('',200, 'remove-success');
-                return $this->errorResponse('path-delete-failed', 500);
-            }
+        if (!$this->checkExistsDocumentById($doc_id)) {
+            return $this->errorResponse('doc-notFound', 404);
+        }
+
+        $document = Document::where('id', $doc_id)->first();
+        if (!$document) {
+            return $this->errorResponse('doc-notFound', 404);
+        }
+
+        $token = request()->bearerToken();
+        $sync = new PythonDocumentSync();
+        $qdrant = $sync->deleteFromQdrant((string) $document->doc_uuid, $token);
+
+        if (!$qdrant['ok']) {
+            $this->audit('document.destroy', 'document', $document->id, [
+                'doc_uuid'      => $document->doc_uuid,
+                'status'        => 'failed',
+                'reason'        => 'qdrant-delete-failed',
+                'python_status' => $qdrant['status'] ?? null,
+                'error'         => $qdrant['error'] ?? null,
+            ]);
+            return $this->errorResponse('qdrant-delete-failed', 500, $qdrant);
+        }
+
+        $file_path = $document->path;
+        if ($file_path && !Storage::disk('public')->delete($file_path)) {
+            $this->audit('document.destroy', 'document', $document->id, [
+                'doc_uuid' => $document->doc_uuid,
+                'status'   => 'partial',
+                'reason'   => 'disk-delete-failed',
+                'qdrant'   => $qdrant['skipped'] ?? false ? 'already-absent' : 'deleted',
+            ]);
             return $this->errorResponse('remove-failed', 500);
         }
-        return $this->errorResponse("doc-notFound", 404);
-    }
 
+        if (!DB::table('documents')->where('id', $doc_id)->delete()) {
+            return $this->errorResponse('path-delete-failed', 500);
+        }
+
+        $this->audit('document.destroy', 'document', $doc_id, [
+            'doc_uuid' => $document->doc_uuid,
+            'status'   => 'ok',
+            'qdrant'   => $qdrant['skipped'] ?? false ? 'already-absent' : 'deleted',
+        ]);
+
+        return $this->successResponse('', 200, 'remove-success');
+    }
     /**
      * Display the specified doc.
      */
@@ -263,12 +313,10 @@ class DocumentController extends ApiController
         }
 
         $document->status = $status;
-
         if (!$document->save()) {
             return $this->errorResponse('save-failed', 500);
         }
 
-        // قانون دامنه اختیاری: اگر published شد و هیچ roleای نداشت → public
         if ($status === 'published' && $document->roles()->count() == 0) {
             $publicRoleId = DB::table('roles')->where('title_en', 'public')->value('id');
             if ($publicRoleId) {
@@ -276,13 +324,55 @@ class DocumentController extends ApiController
             }
         }
 
+        $token = request()->bearerToken();
+        $sync = new PythonDocumentSync();
+        $syncResult = null;
+
+        if ($status === 'published') {
+            $syncResult = $sync->ingest($document, $token);
+            if (!$syncResult['ok']) {
+                $this->audit($action, 'document', $document->id, [
+                    'doc_uuid' => $document->doc_uuid,
+                    'status'   => $status,
+                    'sync'     => 'failed',
+                    'error'    => $syncResult['error'] ?? null,
+                    'python'   => $syncResult['status'] ?? null,
+                ]);
+                $document->load(['roles', 'departments', 'permissions']);
+                return $this->successResponse(
+                    new DocumentResource($document),
+                    200,
+                    'document-published-sync-failed'
+                );
+            }
+        }
+
+        if ($status === 'archived') {
+            $syncResult = $sync->deleteFromQdrant((string) $document->doc_uuid, $token);
+            if (!$syncResult['ok']) {
+                $this->audit($action, 'document', $document->id, [
+                    'doc_uuid' => $document->doc_uuid,
+                    'status'   => $status,
+                    'sync'     => 'failed',
+                    'error'    => $syncResult['error'] ?? null,
+                ]);
+                $document->load(['roles', 'departments', 'permissions']);
+                return $this->successResponse(
+                    new DocumentResource($document),
+                    200,
+                    'document-archived-sync-failed'
+                );
+            }
+        }
+
         $this->audit($action, 'document', $document->id, [
             'doc_uuid' => $document->doc_uuid,
-            'status' => $status,
+            'status'   => $status,
+            'sync'     => 'ok',
+            'qdrant'   => $syncResult['skipped'] ?? false ? 'already-absent' : 'synced',
         ]);
 
         $document->load(['roles', 'departments', 'permissions']);
-
         return $this->successResponse(new DocumentResource($document), 200, 'document-status-updated');
     }
 
@@ -312,6 +402,7 @@ class DocumentController extends ApiController
                 }
             });
     }
+
 
     private function checkExistsDocumentById($id)
     {

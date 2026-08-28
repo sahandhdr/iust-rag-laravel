@@ -124,13 +124,18 @@ Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController
 Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "uploadDoc"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/show/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/update/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+// حذف کامل: Qdrant → disk → MySQL  (متد destroy در DocumentController)
 Route::get("/v1/doc/delete/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 
 Route::get("/v1/doc/get/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "get"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/get_base64/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "getBase64"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
+// انتشار → MySQL published + ingest به Qdrant
 Route::get("/v1/doc/publish/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "publish"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+
+// بایگانی → MySQL archived + حذف از Qdrant (فایل disk می‌ماند)
 Route::get("/v1/doc/archive/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "archive"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 

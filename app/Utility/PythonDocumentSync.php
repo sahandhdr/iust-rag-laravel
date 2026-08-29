@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
+/**
+ * Bridge Laravel document lifecycle → Python Qdrant.
+ * MySQL/disk remain Laravel's responsibility.
+ */
 class PythonDocumentSync
 {
     private string $baseUrl;
@@ -21,9 +25,11 @@ class PythonDocumentSync
     }
 
     /**
+     * Plan A: same doc_uuid → overwrite chunks in Qdrant.
+     *
      * @return array{ok: bool, skipped?: bool, status?: int, body?: mixed, error?: string, data?: mixed}
      */
-    public function ingest(Document $document, ?string $bearerToken = null): array
+    public function ingest(Document $document, ?string $bearerToken = null, bool $overwrite = true): array
     {
         if (!$document->path || !Storage::disk('public')->exists($document->path)) {
             return ['ok' => false, 'error' => 'file-not-on-disk'];
@@ -63,6 +69,7 @@ class PythonDocumentSync
                 'doc_uuid'    => (string) $document->doc_uuid,
                 'status'      => $document->status ?: 'published',
                 'version'     => (int) ($document->version ?: 1),
+                'overwrite'   => $overwrite ? '1' : '0',
                 'roles'       => json_encode(array_values($roles), JSON_UNESCAPED_UNICODE),
                 'departments' => json_encode(array_values($departments), JSON_UNESCAPED_UNICODE),
                 'permissions' => json_encode(array_values($permissions), JSON_UNESCAPED_UNICODE),
@@ -95,7 +102,7 @@ class PythonDocumentSync
 
             $response = $request->delete($this->baseUrl . '/api/v1/files/' . rawurlencode($docUuid));
 
-            // already gone → treat as success for Laravel destroy/archive
+            // idempotent: already gone is OK for archive/destroy
             if ($response->status() === 404) {
                 return ['ok' => true, 'skipped' => true, 'status' => 404, 'body' => $response->json()];
             }

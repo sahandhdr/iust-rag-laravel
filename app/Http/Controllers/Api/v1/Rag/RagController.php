@@ -17,6 +17,13 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
+/**
+ * Laravel gateway for RAG:
+ * - ask / askStream / askWithFile
+ * - MySQL history (human + ai)
+ * - user_context ACL proxy to Python
+ * - optional session auto-create
+ */
 class RagController extends ApiController
 {
     use ApiInfo, Auditable;
@@ -27,7 +34,8 @@ class RagController extends ApiController
     public function __construct()
     {
         $this->pythonBaseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
-        $this->timeout = (int) config('services.python.timeout', 120);
+        // default 180s for LLM + stream (reduces Unable to read from stream)
+        $this->timeout = (int) config('services.python.timeout', 180);
     }
 
     public function ask(Request $request)
@@ -78,11 +86,11 @@ class RagController extends ApiController
         }
 
         $payload = [
-            'query'      => $validated['query'],
-            'session_id' => (string) $sessionId,
+            'query'        => $validated['query'],
+            'session_id'   => (string) $sessionId,
             'user_context' => [
                 'user_id'     => $info['user_id'],
-                'username'    => $info['username'],
+                'username'    => $info['username'] ?? null,
                 'roles'       => $info['roles'],
                 'departments' => $info['departments'],
                 'permissions' => $info['permissions'],
@@ -94,6 +102,7 @@ class RagController extends ApiController
 
         try {
             $response = Http::timeout($this->timeout)
+                ->connectTimeout(30)
                 ->acceptJson()
                 ->asJson()
                 ->post($this->pythonBaseUrl . '/api/v1/chat/ask', $payload);
@@ -178,6 +187,7 @@ class RagController extends ApiController
 
     /**
      * SSE proxy → Python /api/v1/chat/ask/stream
+     * Events forwarded: meta, sources, token*, done, error + Laravel persisted
      */
     public function askStream(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
@@ -226,11 +236,11 @@ class RagController extends ApiController
         }
 
         $payload = [
-            'query'      => $validated['query'],
-            'session_id' => (string) $sessionId,
+            'query'        => $validated['query'],
+            'session_id'   => (string) $sessionId,
             'user_context' => [
                 'user_id'     => $info['user_id'],
-                'username'    => $info['username'],
+                'username'    => $info['username'] ?? null,
                 'roles'       => $info['roles'],
                 'departments' => $info['departments'],
                 'permissions' => $info['permissions'],
@@ -241,7 +251,7 @@ class RagController extends ApiController
         }
 
         $pythonUrl = $this->pythonBaseUrl . '/api/v1/chat/ask/stream';
-        $timeout = $this->timeout;
+        $timeout = max($this->timeout, 180);
         $humanId = $human->id;
         $controller = $this;
 
@@ -264,11 +274,19 @@ class RagController extends ApiController
 
             try {
                 $response = Http::timeout($timeout)
+                    ->connectTimeout(30)
                     ->withHeaders([
                         'Accept'       => 'text/event-stream',
                         'Content-Type' => 'application/json',
+                        'X-Accel-Buffering' => 'no',
+                        'Cache-Control' => 'no-cache',
+                        'Transfer-Encoding' => 'chunked',
+                        'X-Requested-With' => 'XMLHttpRequest'
                     ])
-                    ->withOptions(['stream' => true])
+                    ->withOptions([
+                        'stream'       => true,
+                        'read_timeout' => $timeout,
+                    ])
                     ->post($pythonUrl, $payload);
 
                 if ($response->failed()) {
@@ -498,7 +516,7 @@ class RagController extends ApiController
 
         $userContextJson = json_encode([
             'user_id'     => $info['user_id'],
-            'username'    => $info['username'],
+            'username'    => $info['username'] ?? null,
             'roles'       => $info['roles'],
             'departments' => $info['departments'],
             'permissions' => $info['permissions'],
@@ -509,6 +527,7 @@ class RagController extends ApiController
             $attachName = $messageFile->file_name;
 
             $response = Http::timeout($this->timeout)
+                ->connectTimeout(30)
                 ->attach('file', $fileBinary, $attachName)
                 ->post($this->pythonBaseUrl . '/api/v1/chat/ask_with_file', [
                     'query'        => $query,
@@ -613,9 +632,6 @@ class RagController extends ApiController
     }
 
     /**
-     * session_id داده شده → authorize
-     * خالی / null → ساخت session جدید برای user
-     *
      * @return array{0: int|string|null, 1: true|\Illuminate\Http\JsonResponse}
      */
     private function resolveOrCreateSession($sessionId, int $userId, ?string $query = null): array

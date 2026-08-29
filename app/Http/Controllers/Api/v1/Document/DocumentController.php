@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\v1\Document;
 use App\Http\Controllers\Api\v1\ApiController;
 use App\Http\Resources\Api\v1\Document\DocumentResource;
 use App\Models\Document\Document;
-use App\Models\Permission\Role;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;
+use App\Utility\PythonDocumentSync;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,170 +16,160 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use App\Utility\PythonDocumentSync;
 
 class DocumentController extends ApiController
 {
     use ApiInfo, Auditable;
-    /**
-     * Display all docs.
-     */
+
     public function index()
     {
-        if (DB::table('documents')->count() > 0)
-        {
-            if (Auth::check())
-            {
-                $user = Auth::user();
-                if ($user->hasAnyRole(['admin', 'developer']))
-                {
-                    $documents = Document::withTrashed()->get();
-                }
-            }
+        if (DB::table('documents')->count() <= 0) {
+            return $this->errorResponse('document-notFound', 404);
+        }
+
+        if (!Auth::check()) {
+            return $this->errorResponse('unauthenticated', 401);
+        }
+
+        $user = Auth::user();
+        if ($user->hasAnyRole(['admin', 'developer'])) {
+            $documents = Document::withTrashed()->get();
             return $this->successResponse(DocumentResource::collection($documents), 200);
         }
-        return $this->errorResponse('document-notFound', 404);
+
+        return $this->errorResponse('forbidden', 403);
     }
 
     public function uploadDoc(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            "file_name_show" => 'required',
-            "file" => 'required|file',
-            'status' => 'nullable|in:draft,published,archived',
-//            'docs'    => 'nullable|array|min:1',
-//            'docs.*'  => 'required|integer|exists:docs,id',
-//            'roles'          => 'nullable|array|min:1',
-//            'roles.*'        => 'required|integer|exists:roles,id',
+            'file_name_show' => 'required',
+            'file'           => 'required|file',
+            'status'         => 'nullable|in:draft,published,archived',
         ]);
-//
-//            ->after(function ($validator) {
-//            $docs = $validator->getData()['docs'] ?? [];
-//            $roles       = $validator->getData()['roles'] ?? [];
-//
-//            if (empty($docs) && empty($roles)) {
-//                $validator->errors()->add(
-//                    'access',
-//                    'حداقل یکی از فیلدهای docs یا roles باید مقدار داشته باشد.'
-//                );
-//            }
-//        });
 
-
-        if ($validator->fails())
-            return  $this->errorResponse($validator->errors(), 403);
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors(), 403);
+        }
 
         $originalName = $request->file->getClientOriginalName();
         $docUuid = (string) Str::uuid();
-        $title = $docUuid.'_'.$originalName;
-        $fileName = Carbon::now()->microsecond.'_'.$request->file->getClientOriginalName();
-        $filePath = 'documents'.'/'.$title.'/'.'files';
-        if ($request->file->storeAs($filePath, $fileName, 'public'))
-        {
-            $document = new Document();
-            $document->file_name_show = $request->file_name_show;
-            $document->file_name = $fileName;
-            $document->path= $filePath.'/'.$fileName;
-            $document->extension = $request->file->getClientOriginalExtension();
-            $document->uploader_id = Auth::id();
-            $document->doc_uuid = $docUuid;
-            $document->status = $request->status ?? 'draft';
-            $document->version = 1;
-            if ($document->save())
-            {
-                $this->audit('document.upload', 'document', $document->id, [
-                    'file_name' => $document->file_name,
-                    'doc_uuid' => $document->doc_uuid,
-                    'status' => $document->status,
-                ]);
+        $title = $docUuid . '_' . $originalName;
+        $fileName = Carbon::now()->microsecond . '_' . $request->file->getClientOriginalName();
+        $filePath = 'documents/' . $title . '/files';
 
-                $document->load(['roles', 'departments', 'permissions']);
+        if (!$request->file->storeAs($filePath, $fileName, 'public')) {
+            return $this->errorResponse('upload-failed', 500);
+        }
 
-                return $this->successResponse(new DocumentResource($document), 201, 'document-successfully-saved');
-            }
+        $document = new Document();
+        $document->file_name_show = $request->file_name_show;
+        $document->file_name = $fileName;
+        $document->path = $filePath . '/' . $fileName;
+        $document->extension = $request->file->getClientOriginalExtension();
+        $document->uploader_id = Auth::id();
+        $document->doc_uuid = $docUuid;
+        $document->status = $request->status ?? 'draft';
+        $document->version = 1;
+
+        if (!$document->save()) {
             return $this->errorResponse('save-failed', 500);
         }
-        return $this->errorResponse('upload-failed', 500);
+
+        $this->audit('document.upload', 'document', $document->id, [
+            'file_name' => $document->file_name,
+            'doc_uuid'  => $document->doc_uuid,
+            'status'    => $document->status,
+        ]);
+
+        $document->load(['roles', 'departments', 'permissions']);
+
+        return $this->successResponse(new DocumentResource($document), 201, 'document-successfully-saved');
     }
 
     public function getBase64($doc_id)
     {
-        if ($this->checkExistsDocumentById($doc_id))
-        {
-            $user = Auth::user();
-            if (!$user->hasAnyRole(['admin', 'developer']))
-                return $this->errorResponse('forbidden', 403);
-
-            $path = Document::where("id",$doc_id)->first()->path;
-            $fileManager = new FileManagerRepo();
-            if ($path != null)
-                return $fileManager->getFileContentAsBase64($path,$disk='public');
-            return $this->errorResponse("doc-notDownloaded", 500);
+        if (!$this->checkExistsDocumentById($doc_id)) {
+            return $this->errorResponse('doc-notFound', 404);
         }
-        return $this->errorResponse("doc-notFound", 404);
+
+        $user = Auth::user();
+        if (!$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('forbidden', 403);
+        }
+
+        $path = Document::where('id', $doc_id)->first()->path;
+        $fileManager = new FileManagerRepo();
+        if ($path != null) {
+            return $fileManager->getFileContentAsBase64($path, $disk = 'public');
+        }
+
+        return $this->errorResponse('doc-notDownloaded', 500);
     }
 
     public function get($doc_id)
     {
-        if ($this->checkExistsDocumentById($doc_id))
-        {
-            $user = Auth::user();
-            if (!$user->hasAnyRole(['admin', 'developer']))
-                return $this->errorResponse('forbidden', 403);
-
-            $path = Document::where("id",$doc_id)->first()->path;
-            $fileManager = new FileManagerRepo();
-            if ($path != null)
-                return $fileManager->download($path);
-            return $this->errorResponse("doc-notDownloaded", 500);
+        if (!$this->checkExistsDocumentById($doc_id)) {
+            return $this->errorResponse('doc-notFound', 404);
         }
-        return $this->errorResponse("doc-notFound", 404);
+
+        $user = Auth::user();
+        if (!$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('forbidden', 403);
+        }
+
+        $path = Document::where('id', $doc_id)->first()->path;
+        $fileManager = new FileManagerRepo();
+        if ($path != null) {
+            return $fileManager->download($path);
+        }
+
+        return $this->errorResponse('doc-notDownloaded', 500);
     }
 
     public function search(Request $request)
     {
-        if ($request->hasHeader("accept") && $request->header("accept") == "application/json" && $request->ajax())
-        {
+        if ($request->hasHeader('accept') && $request->header('accept') == 'application/json' && $request->ajax()) {
             $validator = Validator::make($request->all(), [
-                "extension" => 'nullable',
-                "file_name" => 'nullable',
-                "file_name_show" => 'nullable',
-                "doc_uuid" => 'nullable',
-                "status" => 'nullable',
-                "version" => 'nullable'
+                'extension'      => 'nullable',
+                'file_name'      => 'nullable',
+                'file_name_show' => 'nullable',
+                'doc_uuid'       => 'nullable',
+                'status'         => 'nullable',
+                'version'        => 'nullable',
             ]);
-            if ($validator->fails())
-                return  response()->json(["status" => "validation-error", "errors" => $validator->errors()]);
-            $query = Document::with('roles', 'permissions', 'departments')->select("*");
-            if ($request->extension != null) $query->where("extension", "like", "%".$request->extension."%");
-            if ($request->file_name != null) $query->where("file_name", "like", "%".$request->file_name."%");
-            if ($request->file_name_show != null) $query->where("file_name_show", "like", "%".$request->file_name_show."%");
-            if ($request->doc_uuid != null) $query->where("doc_uuid", "like", "%".$request->doc_uuid."%");
-            if ($request->status != null) $query->where("status", "like", "%".$request->status."%");
-            if ($request->version != null) $query->where("version", "like", "%".$request->version."%");
 
-            return $query->exists() ?
-                $this->successResponse(DocumentResource::collection($query->get()), 200, 'file-found') :
-                $this->errorResponse('file-notFound', 404);
+            if ($validator->fails()) {
+                return response()->json(['status' => 'validation-error', 'errors' => $validator->errors()]);
+            }
+
+            $query = Document::with('roles', 'permissions', 'departments')->select('*');
+            if ($request->extension != null) {
+                $query->where('extension', 'like', '%' . $request->extension . '%');
+            }
+            if ($request->file_name != null) {
+                $query->where('file_name', 'like', '%' . $request->file_name . '%');
+            }
+            if ($request->file_name_show != null) {
+                $query->where('file_name_show', 'like', '%' . $request->file_name_show . '%');
+            }
+            if ($request->doc_uuid != null) {
+                $query->where('doc_uuid', 'like', '%' . $request->doc_uuid . '%');
+            }
+            if ($request->status != null) {
+                $query->where('status', 'like', '%' . $request->status . '%');
+            }
+            if ($request->version != null) {
+                $query->where('version', 'like', '%' . $request->version . '%');
+            }
+
+            return $query->exists()
+                ? $this->successResponse(DocumentResource::collection($query->get()), 200, 'file-found')
+                : $this->errorResponse('file-notFound', 404);
         }
-        return  $this->errorResponse('refused', 500);
-    }
 
-//    public function destroy($doc_id)
-//    {
-//        if ($this->checkExistsDocumentById($doc_id))
-//        {
-//            $file_path = Document::where("id", $doc_id)->first()->path;
-//            if (Storage::disk('public')->delete($file_path))
-//            {
-//                if (DB::table('documents')->where("id", $doc_id)->delete())
-//                    return $this->successResponse('',200, 'remove-success');
-//                return $this->errorResponse('path-delete-failed', 500);
-//            }
-//            return $this->errorResponse('remove-failed', 500);
-//        }
-//        return $this->errorResponse("doc-notFound", 404);
-//    }
+        return $this->errorResponse('refused', 500);
+    }
 
     public function destroy($doc_id)
     {
@@ -213,7 +203,7 @@ class DocumentController extends ApiController
                 'doc_uuid' => $document->doc_uuid,
                 'status'   => 'partial',
                 'reason'   => 'disk-delete-failed',
-                'qdrant'   => $qdrant['skipped'] ?? false ? 'already-absent' : 'deleted',
+                'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
             ]);
             return $this->errorResponse('remove-failed', 500);
         }
@@ -225,70 +215,77 @@ class DocumentController extends ApiController
         $this->audit('document.destroy', 'document', $doc_id, [
             'doc_uuid' => $document->doc_uuid,
             'status'   => 'ok',
-            'qdrant'   => $qdrant['skipped'] ?? false ? 'already-absent' : 'deleted',
+            'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
         ]);
 
         return $this->successResponse('', 200, 'remove-success');
     }
-    /**
-     * Display the specified doc.
-     */
+
     public function show(string $id)
     {
-        if ($this->checkExistsDocumentById($id))
-        {
-            $user = Auth::user();
-            if ($user->hasAnyRole(['admin', 'developer']))
-            {
-                $doc = Document::withTrashed()->with('uploader',
-                    'roles',
-                    'permissions', 'departments')->where('id', $id)->first();
-            }
-            elseif ($user->hasRole('public'))
-            {
-                $doc = Document::where('id', $id)->whereNull('deleted_at')->first();
-            }
-            if (!$doc)
-                return $this->errorResponse('doc-notFound', 404);
-
-            if (!$user->canAccessDocument($doc))
-                return $this->errorResponse('forbidden', 403);
-
-            return $this->successResponse(new DocumentResource($doc), 200);
+        if (!$this->checkExistsDocumentById($id)) {
+            return $this->errorResponse('doc-notFound', 404);
         }
-        return $this->errorResponse('doc-notFound', 404);
+
+        $user = Auth::user();
+        $doc = null;
+
+        if ($user->hasAnyRole(['admin', 'developer'])) {
+            $doc = Document::withTrashed()->with('uploader', 'roles', 'permissions', 'departments')
+                ->where('id', $id)->first();
+        } elseif ($user->hasRole('public')) {
+            $doc = Document::where('id', $id)->whereNull('deleted_at')->first();
+        }
+
+        if (!$doc) {
+            return $this->errorResponse('doc-notFound', 404);
+        }
+
+        if (!$user->canAccessDocument($doc)) {
+            return $this->errorResponse('forbidden', 403);
+        }
+
+        return $this->successResponse(new DocumentResource($doc), 200);
     }
 
-    /**
-     * Update the specified doc.
-     */
     public function update(Request $request, string $id)
     {
         $validator = Validator::make($request->all(), [
-            "file_name" => 'nullable',
-            "file_name_show" => 'nullable',
+            'file_name'      => 'nullable',
+            'file_name_show' => 'nullable',
         ]);
 
-        if ($validator->fails())
+        if ($validator->fails()) {
             return $this->errorResponse($validator->messages(), 422);
+        }
 
-        if ($this->checkExistsDocumentById($id)) {
-            $doc = Document::where('id', $id)->whereNull('deleted_at')->first();
-            if ($request->file_name) $doc->file_name = $request->file_name;
-            if ($request->file_name_show) $doc->file_name_show = $request->file_name_show;
+        if (!$this->checkExistsDocumentById($id)) {
+            return $this->errorResponse('doc-notFound', 404);
+        }
 
-            if($doc->save())
-            {
-                $this->audit('document.update', 'document', $doc->id, [
-                    'doc_uuid' => $doc->doc_uuid,
-                    'status' => $doc->status,
-                    'version' => $doc->version,
-                ]);
-                return $this->successResponse(new DocumentResource($doc), 200, 'doc-successfully-updated');
-            }
+        $doc = Document::where('id', $id)->whereNull('deleted_at')->first();
+        if (!$doc) {
+            return $this->errorResponse('doc-notFound', 404);
+        }
+
+        if ($request->file_name) {
+            $doc->file_name = $request->file_name;
+        }
+        if ($request->file_name_show) {
+            $doc->file_name_show = $request->file_name_show;
+        }
+
+        if (!$doc->save()) {
             return $this->errorResponse('save-failed', 500);
         }
-        return $this->errorResponse('doc-notFound', 404);
+
+        $this->audit('document.update', 'document', $doc->id, [
+            'doc_uuid' => $doc->doc_uuid,
+            'status'   => $doc->status,
+            'version'  => $doc->version,
+        ]);
+
+        return $this->successResponse(new DocumentResource($doc), 200, 'doc-successfully-updated');
     }
 
     public function publish($id)
@@ -301,6 +298,11 @@ class DocumentController extends ApiController
         return $this->changeStatus($id, 'archived', 'document.archive');
     }
 
+    /**
+     * Plan A:
+     * - publish: bump version if already published, ingest with overwrite=true (same doc_uuid)
+     * - archive: delete Qdrant chunks for doc_uuid
+     */
     private function changeStatus($id, $status, $action)
     {
         if (!$this->checkExistsDocumentById($id)) {
@@ -310,6 +312,13 @@ class DocumentController extends ApiController
         $document = Document::where('id', $id)->whereNull('deleted_at')->first();
         if (!$document) {
             return $this->errorResponse('doc-notFound', 404);
+        }
+
+        if ($status === 'published') {
+            $wasPublished = ($document->status === 'published');
+            $document->version = $wasPublished
+                ? ((int) ($document->version ?: 1) + 1)
+                : max(1, (int) ($document->version ?: 1));
         }
 
         $document->status = $status;
@@ -329,11 +338,12 @@ class DocumentController extends ApiController
         $syncResult = null;
 
         if ($status === 'published') {
-            $syncResult = $sync->ingest($document, $token);
+            $syncResult = $sync->ingest($document, $token, true);
             if (!$syncResult['ok']) {
                 $this->audit($action, 'document', $document->id, [
                     'doc_uuid' => $document->doc_uuid,
                     'status'   => $status,
+                    'version'  => $document->version,
                     'sync'     => 'failed',
                     'error'    => $syncResult['error'] ?? null,
                     'python'   => $syncResult['status'] ?? null,
@@ -368,8 +378,9 @@ class DocumentController extends ApiController
         $this->audit($action, 'document', $document->id, [
             'doc_uuid' => $document->doc_uuid,
             'status'   => $status,
+            'version'  => $document->version,
             'sync'     => 'ok',
-            'qdrant'   => $syncResult['skipped'] ?? false ? 'already-absent' : 'synced',
+            'qdrant'   => ($syncResult['skipped'] ?? false) ? 'already-absent' : 'synced',
         ]);
 
         $document->load(['roles', 'departments', 'permissions']);
@@ -402,7 +413,6 @@ class DocumentController extends ApiController
                 }
             });
     }
-
 
     private function checkExistsDocumentById($id)
     {

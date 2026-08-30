@@ -278,9 +278,9 @@ class RagController extends ApiController
                     ->withHeaders([
                         'Accept'       => 'text/event-stream',
                         'Content-Type' => 'application/json',
-                        'X-Accel-Buffering' => 'no',
-                        'Cache-Control' => 'no-cache',
-                        'Transfer-Encoding' => 'chunked',
+//                        'X-Accel-Buffering' => 'no',
+//                        'Cache-Control' => 'no-cache',
+//                        'Transfer-Encoding' => 'chunked',
                         'X-Requested-With' => 'XMLHttpRequest'
                     ])
                     ->withOptions([

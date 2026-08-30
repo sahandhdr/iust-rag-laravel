@@ -21,7 +21,7 @@ class PythonDocumentSync
     public function __construct()
     {
         $this->baseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
-        $this->timeout = (int) config('services.python.timeout', 120);
+        $this->timeout = (int) config('services.python.timeout', 180);
     }
 
     /**

@@ -247,7 +247,7 @@ class DocumentController extends ApiController
 
         return $this->successResponse('', 200, 'remove-success');
     }
-    
+
     public function show(string $id)
     {
         if (!$this->checkExistsDocumentById($id)) {

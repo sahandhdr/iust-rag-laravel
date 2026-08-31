@@ -210,15 +210,28 @@ class DocumentController extends ApiController
             return $this->errorResponse('qdrant-delete-failed', 500, $qdrant);
         }
 
-        $file_path = $document->path;
-        if ($file_path && !Storage::disk('public')->delete($file_path)) {
-            $this->audit('document.destroy', 'document', $document->id, [
-                'doc_uuid' => $document->doc_uuid,
-                'status'   => 'partial',
-                'reason'   => 'disk-delete-failed',
-                'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
-            ]);
-            return $this->errorResponse('remove-failed', 500);
+        // ساختار: documents/{doc_uuid}_{name}/files/{file}
+        // فقط پوشه همان سند حذف می‌شود — هرگز کل documents
+        $documentRootDir = $this->resolveDocumentRootDirectory($document->path);
+
+        if ($documentRootDir !== null) {
+            if (Storage::disk('public')->exists($documentRootDir)) {
+                if (!Storage::disk('public')->deleteDirectory($documentRootDir)) {
+                    $this->audit('document.destroy', 'document', $document->id, [
+                        'doc_uuid' => $document->doc_uuid,
+                        'status'   => 'partial',
+                        'reason'   => 'disk-directory-delete-failed',
+                        'dir'      => $documentRootDir,
+                        'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
+                    ]);
+                    return $this->errorResponse('remove-failed', 500);
+                }
+            }
+        } elseif ($document->path) {
+            // fallback: اگر ساختار غیرمنتظره بود، حداقل خود فایل را پاک کن
+            if (Storage::disk('public')->exists($document->path)) {
+                Storage::disk('public')->delete($document->path);
+            }
         }
 
         if (!DB::table('documents')->where('id', $doc_id)->delete()) {
@@ -228,12 +241,13 @@ class DocumentController extends ApiController
         $this->audit('document.destroy', 'document', $doc_id, [
             'doc_uuid' => $document->doc_uuid,
             'status'   => 'ok',
+            'dir'      => $documentRootDir,
             'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
         ]);
 
         return $this->successResponse('', 200, 'remove-success');
     }
-
+    
     public function show(string $id)
     {
         if (!$this->checkExistsDocumentById($id)) {
@@ -425,6 +439,47 @@ class DocumentController extends ApiController
                     });
                 }
             });
+    }
+
+    /**
+     * از path فایل، پوشه ریشه همان سند را برمی‌گرداند.
+     * مثال:
+     *   documents/{uuid}_name/files/file.docx  →  documents/{uuid}_name
+     * اگر path ناامن یا ریشه documents باشد → null
+     */
+    private function resolveDocumentRootDirectory(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        $normalized = str_replace('\\', '/', trim($path, '/'));
+
+        // فقط زیر documents/ مجاز است
+        if (!str_starts_with($normalized, 'documents/')) {
+            return null;
+        }
+
+        $parts = explode('/', $normalized);
+        // documents / {docFolder} / files / filename  → حداقل 4 بخش برای ساختار استاندارد
+        // documents / {docFolder} / filename           → حداقل 3 بخش
+        if (count($parts) < 3) {
+            return null;
+        }
+
+        $docFolder = $parts[1] ?? '';
+        if ($docFolder === '' || $docFolder === '.' || $docFolder === '..') {
+            return null;
+        }
+
+        $root = 'documents/' . $docFolder;
+
+        // ایمنی: هرگز خود documents را برنگردان
+        if ($root === 'documents' || $root === 'documents/') {
+            return null;
+        }
+
+        return $root;
     }
 
     private function checkExistsDocumentById($id)

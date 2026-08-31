@@ -23,21 +23,34 @@ class DocumentController extends ApiController
 
     public function index()
     {
-        if (DB::table('documents')->count() <= 0) {
-            return $this->errorResponse('document-notFound', 404);
-        }
-
         if (!Auth::check()) {
             return $this->errorResponse('unauthenticated', 401);
         }
 
         $user = Auth::user();
+
         if ($user->hasAnyRole(['admin', 'developer'])) {
-            $documents = Document::withTrashed()->get();
+            $documents = Document::withTrashed()
+                ->with(['roles', 'departments', 'permissions'])
+                ->get();
+
+            if ($documents->isEmpty()) {
+                return $this->errorResponse('document-notFound', 404);
+            }
+
             return $this->successResponse(DocumentResource::collection($documents), 200);
         }
 
-        return $this->errorResponse('forbidden', 403);
+        // public / staff: فقط اسناد قابل‌دسترسی
+        $documents = $this->accessibleDocumentsQuery($user)
+            ->with(['roles', 'departments', 'permissions'])
+            ->get();
+
+        if ($documents->isEmpty()) {
+            return $this->errorResponse('document-notFound', 404);
+        }
+
+        return $this->successResponse(DocumentResource::collection($documents), 200);
     }
 
     public function uploadDoc(Request $request)

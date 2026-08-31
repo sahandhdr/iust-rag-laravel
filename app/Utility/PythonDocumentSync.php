@@ -12,16 +12,22 @@ use Throwable;
 /**
  * Bridge Laravel document lifecycle → Python Qdrant.
  * MySQL/disk remain Laravel's responsibility.
+ *
+ * Auth for server-to-server:
+ *   X-Internal-Key  → avoids verify-token deadlock during publish/archive/destroy
+ *   Bearer (optional) kept for compatibility
  */
 class PythonDocumentSync
 {
     private string $baseUrl;
     private int $timeout;
+    private string $internalApiKey;
 
     public function __construct()
     {
         $this->baseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
         $this->timeout = (int) config('services.python.timeout', 180);
+        $this->internalApiKey = (string) config('services.python.internal_api_key', '');
     }
 
     /**
@@ -58,11 +64,10 @@ class PythonDocumentSync
 
         try {
             $request = Http::timeout($this->timeout)
+                ->connectTimeout(30)
                 ->attach('file', $binary, $filename);
 
-            if ($bearerToken) {
-                $request = $request->withToken($bearerToken);
-            }
+            $request = $this->applyAuthHeaders($request, $bearerToken);
 
             $response = $request->post($this->baseUrl . '/api/v1/files/ingest', [
                 'department'  => $department,
@@ -81,6 +86,7 @@ class PythonDocumentSync
                 'doc_uuid' => $document->doc_uuid,
                 'error'    => $e->getMessage(),
             ]);
+
             return ['ok' => false, 'error' => $e->getMessage()];
         }
     }
@@ -95,16 +101,19 @@ class PythonDocumentSync
         }
 
         try {
-            $request = Http::timeout($this->timeout);
-            if ($bearerToken) {
-                $request = $request->withToken($bearerToken);
-            }
+            $request = Http::timeout($this->timeout)->connectTimeout(30);
+            $request = $this->applyAuthHeaders($request, $bearerToken);
 
             $response = $request->delete($this->baseUrl . '/api/v1/files/' . rawurlencode($docUuid));
 
             // idempotent: already gone is OK for archive/destroy
             if ($response->status() === 404) {
-                return ['ok' => true, 'skipped' => true, 'status' => 404, 'body' => $response->json()];
+                return [
+                    'ok'      => true,
+                    'skipped' => true,
+                    'status'  => 404,
+                    'body'    => $response->json(),
+                ];
             }
 
             return $this->wrap($response);
@@ -113,13 +122,36 @@ class PythonDocumentSync
                 'doc_uuid' => $docUuid,
                 'error'    => $e->getMessage(),
             ]);
+
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Internal key first (no Laravel callback). Bearer optional for compatibility.
+     *
+     * @param  \Illuminate\Http\Client\PendingRequest  $request
+     * @return \Illuminate\Http\Client\PendingRequest
+     */
+    private function applyAuthHeaders($request, ?string $bearerToken = null)
+    {
+        if ($this->internalApiKey !== '') {
+            $request = $request->withHeaders([
+                'X-Internal-Key' => $this->internalApiKey,
+            ]);
+        }
+
+        if ($bearerToken) {
+            $request = $request->withToken($bearerToken);
+        }
+
+        return $request;
     }
 
     private function wrap(Response $response): array
     {
         $body = $response->json();
+
         if ($response->successful()) {
             return [
                 'ok'     => true,

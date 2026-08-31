@@ -120,7 +120,7 @@ Route::post("/v1/dept/sync_users/{dept_id}", [\App\Http\Controllers\Api\v1\Depar
 
 
 //======================================== documents ========================================
-Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "uploadDoc"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/show/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/update/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);

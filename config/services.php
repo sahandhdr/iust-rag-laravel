@@ -38,7 +38,7 @@ return [
     'python' => [
         'base_url' => env('PYTHON_BASE_URL', 'http://127.0.0.1:8001'),
         'timeout'  => env('PYTHON_TIMEOUT', 180),
-        'internal_api_key' => env('IUST-KNOWLEDGE-BASE', ''),
+        'internal_api_key' => env('PYTHON_INTERNAL_API_KEY', ''),
     ],
 
 ];

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\v1\Document;
 use App\Http\Controllers\Api\v1\ApiController;
 use App\Http\Resources\Api\v1\Document\DocumentResource;
 use App\Models\Document\Document;
+use App\Services\RagResponseCache\RagResponseCache;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;
@@ -228,7 +229,6 @@ class DocumentController extends ApiController
                 }
             }
         } elseif ($document->path) {
-            // fallback: اگر ساختار غیرمنتظره بود، حداقل خود فایل را پاک کن
             if (Storage::disk('public')->exists($document->path)) {
                 Storage::disk('public')->delete($document->path);
             }
@@ -238,11 +238,15 @@ class DocumentController extends ApiController
             return $this->errorResponse('path-delete-failed', 500);
         }
 
+        // باطل‌سازی exact-cache پاسخ‌های RAG
+        (new RagResponseCache())->invalidateAll();
+
         $this->audit('document.destroy', 'document', $doc_id, [
-            'doc_uuid' => $document->doc_uuid,
-            'status'   => 'ok',
-            'dir'      => $documentRootDir,
-            'qdrant'   => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
+            'doc_uuid'        => $document->doc_uuid,
+            'status'          => 'ok',
+            'dir'             => $documentRootDir,
+            'qdrant'          => ($qdrant['skipped'] ?? false) ? 'already-absent' : 'deleted',
+            'cache_invalidated' => true,
         ]);
 
         return $this->successResponse('', 200, 'remove-success');
@@ -329,6 +333,7 @@ class DocumentController extends ApiController
      * Plan A:
      * - publish: bump version if already published, ingest with overwrite=true (same doc_uuid)
      * - archive: delete Qdrant chunks for doc_uuid
+     * - after successful sync: invalidate RAG exact response cache
      */
     private function changeStatus($id, $status, $action)
     {
@@ -402,12 +407,16 @@ class DocumentController extends ApiController
             }
         }
 
+        // باطل‌سازی exact-cache بعد از تغییر موفق corpus
+        (new RagResponseCache())->invalidateAll();
+
         $this->audit($action, 'document', $document->id, [
-            'doc_uuid' => $document->doc_uuid,
-            'status'   => $status,
-            'version'  => $document->version,
-            'sync'     => 'ok',
-            'qdrant'   => ($syncResult['skipped'] ?? false) ? 'already-absent' : 'synced',
+            'doc_uuid'          => $document->doc_uuid,
+            'status'            => $status,
+            'version'           => $document->version,
+            'sync'              => 'ok',
+            'qdrant'            => ($syncResult['skipped'] ?? false) ? 'already-absent' : 'synced',
+            'cache_invalidated' => true,
         ]);
 
         $document->load(['roles', 'departments', 'permissions']);

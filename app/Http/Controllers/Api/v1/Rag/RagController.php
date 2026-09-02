@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\v1\ApiController;
 use App\Models\Chat\ChatMessage;
 use App\Models\Chat\ChatMessageFile;
 use App\Models\Chat\ChatSession;
+use App\Services\RagResponseCache;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;
@@ -20,9 +21,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Laravel gateway for RAG:
  * - ask / askStream / askWithFile
- * - MySQL history (human + ai)
+ * - MySQL history (append-only human + ai; edit keeps previous rows)
+ * - exact response cache via Redis (RagResponseCache)
  * - user_context ACL proxy to Python
- * - optional session auto-create
  */
 class RagController extends ApiController
 {
@@ -30,21 +31,24 @@ class RagController extends ApiController
 
     private string $pythonBaseUrl;
     private int $timeout;
+    private RagResponseCache $responseCache;
 
     public function __construct()
     {
         $this->pythonBaseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
-        // default 180s for LLM + stream (reduces Unable to read from stream)
         $this->timeout = (int) config('services.python.timeout', 180);
+        $this->responseCache = new RagResponseCache();
     }
 
     public function ask(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'         => 'required|string|max:2000',
-            'session_id'    => 'nullable',
-            'msg_id'        => 'nullable|string|max:50',
-            'selected_text' => 'nullable|string',
+            'query'               => 'required|string|max:2000',
+            'session_id'          => 'nullable',
+            'msg_id'              => 'nullable|string|max:50',
+            'selected_text'       => 'nullable|string',
+            'edit_of_message_id'  => 'nullable|integer|min:1',
+            'skip_cache'          => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -65,6 +69,7 @@ class RagController extends ApiController
         }
 
         $validated = $validator->validated();
+        $skipCache = (bool) ($validated['skip_cache'] ?? false);
 
         [$sessionId, $sessionOk] = $this->resolveOrCreateSession(
             $validated['session_id'] ?? null,
@@ -75,13 +80,61 @@ class RagController extends ApiController
             return $sessionOk;
         }
 
-        $human = new ChatMessage();
-        $human->session_id = $sessionId;
-        $human->role = 'human';
-        $human->content = $validated['query'];
-        $human->msg_id = null;
-        $human->sources = null;
-        if (!$human->save()) {
+        $editOfId = $validated['edit_of_message_id'] ?? null;
+        if ($editOfId !== null) {
+            $editCheck = $this->authorizeEditOfMessage((int) $editOfId, (int) $sessionId, (int) $user->id);
+            if ($editCheck !== true) {
+                return $editCheck;
+            }
+        }
+
+        // --- exact cache (same query + same ACL generation) ---
+        if (!$skipCache) {
+            $cached = $this->responseCache->get($validated['query'], $info);
+            if (is_array($cached) && array_key_exists('answer', $cached)) {
+                $human = $this->persistHumanMessage($sessionId, $validated['query'], $editOfId);
+                if ($human === null) {
+                    return $this->errorResponse('human-message-save-failed', 500);
+                }
+
+                $ai = new ChatMessage();
+                $ai->session_id = $sessionId;
+                $ai->role = 'ai';
+                $ai->content = is_string($cached['answer'])
+                    ? $cached['answer']
+                    : json_encode($cached['answer'], JSON_UNESCAPED_UNICODE);
+                $ai->msg_id = null;
+                $ai->sources = $cached['sources'] ?? null;
+
+                if (!$ai->save()) {
+                    return $this->errorResponse('ai-message-save-failed', 500, [
+                        'human_message_id' => $human->id,
+                    ]);
+                }
+
+                $this->audit('rag.ask', 'chat_session', $sessionId, [
+                    'status'                 => 'ok',
+                    'from_cache'             => true,
+                    'human_message_id'       => $human->id,
+                    'ai_message_id'          => $ai->id,
+                    'edited_from_message_id' => $editOfId,
+                ]);
+
+                return $this->successResponse([
+                    'answer'                 => $cached['answer'],
+                    'sources'                => $cached['sources'] ?? null,
+                    'session_id'             => $sessionId,
+                    'processing_time'        => 0,
+                    'from_cache'             => true,
+                    'human_message_id'       => $human->id,
+                    'ai_message_id'          => $ai->id,
+                    'edited_from_message_id' => $editOfId,
+                ], 200, 'rag-ok-cache');
+            }
+        }
+
+        $human = $this->persistHumanMessage($sessionId, $validated['query'], $editOfId);
+        if ($human === null) {
             return $this->errorResponse('human-message-save-failed', 500);
         }
 
@@ -155,19 +208,28 @@ class RagController extends ApiController
                 ]);
             }
 
+            $this->responseCache->set($validated['query'], $info, [
+                'answer'  => $answer,
+                'sources' => $sources,
+            ]);
+
             $this->audit('rag.ask', 'chat_session', $sessionId, [
-                'status'           => 'ok',
-                'human_message_id' => $human->id,
-                'ai_message_id'    => $ai->id,
+                'status'                 => 'ok',
+                'from_cache'             => false,
+                'human_message_id'       => $human->id,
+                'ai_message_id'          => $ai->id,
+                'edited_from_message_id' => $editOfId,
             ]);
 
             return $this->successResponse([
-                'answer'           => $answer,
-                'sources'          => $sources,
-                'session_id'       => $sessionId,
-                'processing_time'  => $data['processing_time'] ?? null,
-                'human_message_id' => $human->id,
-                'ai_message_id'    => $ai->id,
+                'answer'                 => $answer,
+                'sources'                => $sources,
+                'session_id'             => $sessionId,
+                'processing_time'        => $data['processing_time'] ?? null,
+                'from_cache'             => false,
+                'human_message_id'       => $human->id,
+                'ai_message_id'          => $ai->id,
+                'edited_from_message_id' => $editOfId,
             ], 200, 'rag-ok');
         } catch (\Throwable $e) {
             Log::error('RAG ask exception: ' . $e->getMessage(), ['exception' => $e]);
@@ -185,16 +247,13 @@ class RagController extends ApiController
         }
     }
 
-    /**
-     * SSE proxy → Python /api/v1/chat/ask/stream
-     * Events forwarded: meta, sources, token*, done, error + Laravel persisted
-     */
     public function askStream(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'query'         => 'required|string|max:2000',
-            'session_id'    => 'nullable',
-            'selected_text' => 'nullable|string',
+            'query'              => 'required|string|max:2000',
+            'session_id'         => 'nullable',
+            'selected_text'      => 'nullable|string',
+            'edit_of_message_id' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -225,13 +284,16 @@ class RagController extends ApiController
             return $sessionOk;
         }
 
-        $human = new ChatMessage();
-        $human->session_id = $sessionId;
-        $human->role = 'human';
-        $human->content = $validated['query'];
-        $human->msg_id = null;
-        $human->sources = null;
-        if (!$human->save()) {
+        $editOfId = $validated['edit_of_message_id'] ?? null;
+        if ($editOfId !== null) {
+            $editCheck = $this->authorizeEditOfMessage((int) $editOfId, (int) $sessionId, (int) $user->id);
+            if ($editCheck !== true) {
+                return $editCheck;
+            }
+        }
+
+        $human = $this->persistHumanMessage($sessionId, $validated['query'], $editOfId);
+        if ($human === null) {
             return $this->errorResponse('human-message-save-failed', 500);
         }
 
@@ -254,13 +316,28 @@ class RagController extends ApiController
         $timeout = max($this->timeout, 180);
         $humanId = $human->id;
         $controller = $this;
+        $cache = $this->responseCache;
+        $queryForCache = $validated['query'];
+        $aclForCache = $info;
 
-        return response()->stream(function () use ($payload, $pythonUrl, $timeout, $sessionId, $humanId, $controller) {
+        return response()->stream(function () use (
+            $payload,
+            $pythonUrl,
+            $timeout,
+            $sessionId,
+            $humanId,
+            $controller,
+            $cache,
+            $queryForCache,
+            $aclForCache,
+            $editOfId
+        ) {
             echo "event: meta\n";
             echo 'data: ' . json_encode([
-                    'session_id'       => (string) $sessionId,
-                    'human_message_id' => $humanId,
-                    'gateway'          => 'laravel',
+                    'session_id'             => (string) $sessionId,
+                    'human_message_id'       => $humanId,
+                    'gateway'                => 'laravel',
+                    'edited_from_message_id' => $editOfId,
                 ], JSON_UNESCAPED_UNICODE) . "\n\n";
             if (function_exists('ob_flush')) {
                 @ob_flush();
@@ -276,12 +353,9 @@ class RagController extends ApiController
                 $response = Http::timeout($timeout)
                     ->connectTimeout(30)
                     ->withHeaders([
-                        'Accept'       => 'text/event-stream',
-                        'Content-Type' => 'application/json',
-//                        'X-Accel-Buffering' => 'no',
-//                        'Cache-Control' => 'no-cache',
-//                        'Transfer-Encoding' => 'chunked',
-                        'X-Requested-With' => 'XMLHttpRequest'
+                        'Accept'           => 'text/event-stream',
+                        'Content-Type'     => 'application/json',
+                        'X-Requested-With' => 'XMLHttpRequest',
                     ])
                     ->withOptions([
                         'stream'       => true,
@@ -360,16 +434,23 @@ class RagController extends ApiController
 
                                     $persisted = true;
 
+                                    $cache->set($queryForCache, $aclForCache, [
+                                        'answer'  => $answer,
+                                        'sources' => $sourcesBuffer,
+                                    ]);
+
                                     $controller->audit('rag.ask_stream', 'chat_session', $sessionId, [
-                                        'status'           => 'ok',
-                                        'human_message_id' => $humanId,
-                                        'ai_message_id'    => $ai->id,
+                                        'status'                 => 'ok',
+                                        'human_message_id'       => $humanId,
+                                        'ai_message_id'          => $ai->id,
+                                        'edited_from_message_id' => $editOfId,
                                     ]);
 
                                     echo "event: persisted\n";
                                     echo 'data: ' . json_encode([
-                                            'ai_message_id'    => $ai->id,
-                                            'human_message_id' => $humanId,
+                                            'ai_message_id'          => $ai->id,
+                                            'human_message_id'       => $humanId,
+                                            'edited_from_message_id' => $editOfId,
                                         ], JSON_UNESCAPED_UNICODE) . "\n\n";
                                     if (function_exists('ob_flush')) {
                                         @ob_flush();
@@ -431,9 +512,10 @@ class RagController extends ApiController
     public function askWithFile(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'      => 'required|string|max:2000',
-            'session_id' => 'nullable',
-            'file'       => 'required|file|max:20480',
+            'query'              => 'required|string|max:2000',
+            'session_id'         => 'nullable',
+            'file'               => 'required|file|max:20480',
+            'edit_of_message_id' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -455,6 +537,7 @@ class RagController extends ApiController
 
         $query = $request->input('query');
         $uploaded = $request->file('file');
+        $editOfId = $request->input('edit_of_message_id');
 
         [$sessionId, $sessionOk] = $this->resolveOrCreateSession(
             $request->input('session_id'),
@@ -465,14 +548,15 @@ class RagController extends ApiController
             return $sessionOk;
         }
 
-        $human = new ChatMessage();
-        $human->session_id = $sessionId;
-        $human->role = 'human';
-        $human->content = $query;
-        $human->msg_id = null;
-        $human->sources = null;
+        if ($editOfId !== null) {
+            $editCheck = $this->authorizeEditOfMessage((int) $editOfId, (int) $sessionId, (int) $user->id);
+            if ($editCheck !== true) {
+                return $editCheck;
+            }
+        }
 
-        if (!$human->save()) {
+        $human = $this->persistHumanMessage($sessionId, $query, $editOfId ? (int) $editOfId : null);
+        if ($human === null) {
             return $this->errorResponse('human-message-save-failed', 500);
         }
 
@@ -594,6 +678,7 @@ class RagController extends ApiController
                 'ai_message_id'        => $ai->id,
                 'chat_message_file_id' => $messageFile->id,
                 'file_name'            => $messageFile->file_name,
+                'edited_from_message_id' => $editOfId,
             ]);
 
             return $this->successResponse([
@@ -605,6 +690,7 @@ class RagController extends ApiController
                 'human_message_id'     => $human->id,
                 'ai_message_id'        => $ai->id,
                 'chat_message_file_id' => $messageFile->id,
+                'edited_from_message_id' => $editOfId,
                 'file'                 => [
                     'id'         => $messageFile->id,
                     'file_name'  => $messageFile->file_name,
@@ -629,6 +715,59 @@ class RagController extends ApiController
                 'chat_message_file_id' => $messageFile->id ?? null,
             ]);
         }
+    }
+
+    private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
+    {
+        $human = new ChatMessage();
+        $human->session_id = $sessionId;
+        $human->role = 'human';
+        $human->content = $content;
+        $human->msg_id = null;
+        $human->sources = null;
+
+        // append-only: previous human/ai rows stay in DB
+        if (!$human->save()) {
+            return null;
+        }
+
+        if ($editOfMessageId !== null) {
+            $this->audit('chat.message_edit', 'chat_message', $human->id, [
+                'edited_from_message_id' => $editOfMessageId,
+                'session_id'             => $sessionId,
+            ]);
+        }
+
+        return $human;
+    }
+
+    /**
+     * @return true|\Illuminate\Http\JsonResponse
+     */
+    private function authorizeEditOfMessage(int $messageId, int $sessionId, int $userId)
+    {
+        $msg = ChatMessage::where('id', $messageId)->first();
+        if (!$msg || (int) $msg->session_id !== $sessionId) {
+            return $this->errorResponse('edit-source-message-notFound', 404);
+        }
+
+        if ($msg->role !== 'human') {
+            return $this->errorResponse('edit-source-must-be-human', 422);
+        }
+
+        $session = ChatSession::where('id', $sessionId)->first();
+        if (!$session) {
+            return $this->errorResponse('session-notFound', 404);
+        }
+
+        if (
+            !Auth::user()->hasAnyRole(['admin', 'developer'])
+            && (int) $session->user_id !== (int) $userId
+        ) {
+            return $this->errorResponse('user-notAuthorized', 403);
+        }
+
+        return true;
     }
 
     /**

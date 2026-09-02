@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\v1\ApiController;
 use App\Models\Chat\ChatMessage;
 use App\Models\Chat\ChatMessageFile;
 use App\Models\Chat\ChatSession;
-use App\Services\RagResponseCache;
+use App\Services\RagResponseCache\RagResponseCache;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;

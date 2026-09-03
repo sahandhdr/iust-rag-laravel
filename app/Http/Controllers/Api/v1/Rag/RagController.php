@@ -717,6 +717,12 @@ class RagController extends ApiController
         }
     }
 
+    public function cache_clear()
+    {
+         $cache_clear = new RagResponseCache();
+         return $cache_clear->invalidateAll();
+    }
+
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
     {
         $human = new ChatMessage();

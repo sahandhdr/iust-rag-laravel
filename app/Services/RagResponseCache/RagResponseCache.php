@@ -77,15 +77,14 @@ class RagResponseCache
         }
     }
 
-    public function buildKey(string $query, array $userAcl): string
+    protected function buildKey(string $query, array $userAcl): string
     {
         $normalized = $this->normalizeQuery($query);
         $roles = $this->normalizeList($userAcl['roles'] ?? []);
         $depts = $this->normalizeList($userAcl['departments'] ?? []);
-        $gen = $this->generation();
+        $gen = $this->generation();   // این خط را اضافه کن
 
         $material = $normalized . '|r:' . implode(',', $roles) . '|d:' . implode(',', $depts) . '|g:' . $gen;
-
         return 'ans:' . hash('sha256', $material);
     }
 

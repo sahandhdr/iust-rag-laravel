@@ -127,6 +127,41 @@ class PythonDocumentSync
         }
     }
 
+    public function reembedAllPublished(): array
+    {
+        $docs = \App\Models\Document\Document::query()
+            ->where('status', 'published')
+            ->whereNull('deleted_at')
+            ->get();
+
+        $token = request()->bearerToken(); // یا internal key اگر ingest فقط internal است
+        $results = [];
+        $ok = 0;
+        $fail = 0;
+
+        foreach ($docs as $document) {
+            $sync = $this->ingest($document, $token, true); // overwrite = true
+            $entry = [
+                'doc_uuid' => $document->doc_uuid,
+                'id'       => $document->id,
+                'ok'       => (bool)($sync['ok'] ?? false),
+                'detail'   => $sync,
+            ];
+            $results[] = $entry;
+            if ($entry['ok']) {
+                $ok++;
+            } else {
+                $fail++;
+            }
+        }
+
+        return [
+            'total'   => $docs->count(),
+            'ok'      => $ok,
+            'fail'    => $fail,
+            'results' => $results,
+        ];
+    }
     /**
      * Internal key first (no Laravel callback). Bearer optional for compatibility.
      *

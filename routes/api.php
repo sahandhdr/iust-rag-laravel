@@ -139,6 +139,7 @@ Route::get("/v1/doc/publish/{doc_id}", [\App\Http\Controllers\Api\v1\Document\Do
 Route::get("/v1/doc/archive/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "archive"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 
+
 /* ------------------------------| roles |------------------------------ */
 Route::get("/v1/doc/attach_role/{doc_id}/{role_id}", [\App\Http\Controllers\Api\v1\Document\DocumentRelationController::class, "attachRoleToDocument"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/detach_role/{doc_id}/{role_id}", [\App\Http\Controllers\Api\v1\Document\DocumentRelationController::class, "detachRoleFromDocument"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
@@ -188,3 +189,5 @@ Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\C
 Route::post('/v1/rag/ask', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'ask'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-with-file', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askWithFile'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-stream', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askStream'])->middleware('auth:sanctum')->middleware('throttle:rag');
+Route::post('/v1/rag/cache/clear', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'cacheClear'])->middleware(['role:admin,developer']);
+Route::post('/v1/rag/reembed', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembed'])->middleware(['role:admin,developer']);

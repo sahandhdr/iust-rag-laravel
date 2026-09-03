@@ -717,10 +717,44 @@ class RagController extends ApiController
         }
     }
 
-    public function cache_clear()
+    public function cacheClear()
     {
-         $cache_clear = new RagResponseCache();
-         return $cache_clear->invalidateAll();
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('not-authorized', 403);
+        }
+
+        $ok = (new RagResponseCache())->invalidateAll();
+
+        $this->audit('rag.cache_clear', 'rag_cache', null, [
+            'status' => $ok ? 'ok' : 'failed',
+        ]);
+
+        return $ok
+            ? $this->successResponse(['invalidated' => true], 200, 'cache-cleared')
+            : $this->errorResponse('cache-clear-failed', 500);
+    }
+
+    public function reembed()
+    {
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('not-authorized', 403);
+        }
+
+        $sync = new \App\Utility\PythonDocumentSync();
+        $report = $sync->reembedAllPublished();
+
+        (new RagResponseCache())->invalidateAll();
+
+        $this->audit('rag.reembed', 'rag_index', null, [
+            'total' => $report['total'],
+            'ok'    => $report['ok'],
+            'fail'  => $report['fail'],
+        ]);
+
+        $code = ($report['fail'] ?? 0) > 0 ? 207 : 200; // 207 = multi-status اختیاری
+        return $this->successResponse($report, $code, 'reembed-finished');
     }
 
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage

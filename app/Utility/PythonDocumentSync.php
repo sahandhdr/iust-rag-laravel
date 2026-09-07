@@ -3,6 +3,7 @@
 namespace App\Utility;
 
 use App\Models\Document\Document;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -14,26 +15,44 @@ use Throwable;
  * MySQL/disk remain Laravel's responsibility.
  *
  * Auth for server-to-server:
- *   X-Internal-Key  → avoids verify-token deadlock during publish/archive/destroy
- *   Bearer (optional) kept for compatibility
+ *   X-Internal-Key  → preferred; avoids verify-token deadlock on single-worker PHP
+ *   Bearer          → only when internal key is empty (compatibility)
+ *
+ * Timeouts (from config/services.php → env):
+ *   python.connect_timeout  — TCP connect
+ *   python.ingest_timeout   — ingest / delete / reembed per document
+ *   python.timeout          — fallback if ingest_timeout missing
  */
 class PythonDocumentSync
 {
     private string $baseUrl;
     private int $timeout;
+    private int $ingestTimeout;
+    private int $connectTimeout;
     private string $internalApiKey;
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
-        $this->timeout = (int) config('services.python.timeout', 180);
+        $this->baseUrl = rtrim((string) config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
+        $this->timeout = max(1, (int) config('services.python.timeout', 120));
+        $this->ingestTimeout = max(1, (int) config('services.python.ingest_timeout', config('services.python.timeout', 300)));
+        $this->connectTimeout = max(1, (int) config('services.python.connect_timeout', 15));
         $this->internalApiKey = (string) config('services.python.internal_api_key', '');
     }
 
     /**
      * Plan A: same doc_uuid → overwrite chunks in Qdrant.
      *
-     * @return array{ok: bool, skipped?: bool, status?: int, body?: mixed, error?: string, data?: mixed}
+     * @return array{
+     *     ok: bool,
+     *     skipped?: bool,
+     *     status?: int,
+     *     body?: mixed,
+     *     error?: string,
+     *     data?: mixed,
+     *     timeout?: bool,
+     *     timeout_seconds?: int
+     * }
      */
     public function ingest(Document $document, ?string $bearerToken = null, bool $overwrite = true): array
     {
@@ -63,8 +82,8 @@ class PythonDocumentSync
         $filename = $document->file_name ?: basename($document->path);
 
         try {
-            $request = Http::timeout($this->timeout)
-                ->connectTimeout(30)
+            $request = Http::timeout($this->ingestTimeout)
+                ->connectTimeout($this->connectTimeout)
                 ->attach('file', $binary, $filename);
 
             $request = $this->applyAuthHeaders($request, $bearerToken);
@@ -82,17 +101,20 @@ class PythonDocumentSync
 
             return $this->wrap($response);
         } catch (Throwable $e) {
-            Log::error('Python ingest exception', [
-                'doc_uuid' => $document->doc_uuid,
-                'error'    => $e->getMessage(),
-            ]);
-
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return $this->exceptionResult('Python ingest exception', (string) $document->doc_uuid, $e, $this->ingestTimeout);
         }
     }
 
     /**
-     * @return array{ok: bool, skipped?: bool, status?: int, body?: mixed, error?: string}
+     * @return array{
+     *     ok: bool,
+     *     skipped?: bool,
+     *     status?: int,
+     *     body?: mixed,
+     *     error?: string,
+     *     timeout?: bool,
+     *     timeout_seconds?: int
+     * }
      */
     public function deleteFromQdrant(string $docUuid, ?string $bearerToken = null): array
     {
@@ -101,7 +123,9 @@ class PythonDocumentSync
         }
 
         try {
-            $request = Http::timeout($this->timeout)->connectTimeout(30);
+            $request = Http::timeout($this->ingestTimeout)
+                ->connectTimeout($this->connectTimeout);
+
             $request = $this->applyAuthHeaders($request, $bearerToken);
 
             $response = $request->delete($this->baseUrl . '/api/v1/files/' . rawurlencode($docUuid));
@@ -118,52 +142,70 @@ class PythonDocumentSync
 
             return $this->wrap($response);
         } catch (Throwable $e) {
-            Log::error('Python delete exception', [
-                'doc_uuid' => $docUuid,
-                'error'    => $e->getMessage(),
-            ]);
-
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return $this->exceptionResult('Python delete exception', $docUuid, $e, $this->ingestTimeout);
         }
     }
 
+    /**
+     * Re-ingest all published documents (overwrite).
+     * Per-document timeout via ingest(); continues on failure.
+     *
+     * @return array{
+     *     total: int,
+     *     ok: int,
+     *     fail: int,
+     *     timeout_count: int,
+     *     results: list<array{doc_uuid: mixed, id: mixed, ok: bool, detail: array}>
+     * }
+     */
     public function reembedAllPublished(): array
     {
-        $docs = \App\Models\Document\Document::query()
+        $docs = Document::query()
             ->where('status', 'published')
             ->whereNull('deleted_at')
             ->get();
 
-        $token = request()->bearerToken(); // یا internal key اگر ingest فقط internal است
+        // Prefer internal key path: do not pass bearer when internal key is configured
+        $token = $this->internalApiKey !== '' ? null : request()->bearerToken();
+
         $results = [];
         $ok = 0;
         $fail = 0;
+        $timeoutCount = 0;
 
         foreach ($docs as $document) {
-            $sync = $this->ingest($document, $token, true); // overwrite = true
+            $sync = $this->ingest($document, $token, true);
+            $isTimeout = !empty($sync['timeout']);
+
             $entry = [
                 'doc_uuid' => $document->doc_uuid,
                 'id'       => $document->id,
-                'ok'       => (bool)($sync['ok'] ?? false),
+                'ok'       => (bool) ($sync['ok'] ?? false),
                 'detail'   => $sync,
             ];
             $results[] = $entry;
+
             if ($entry['ok']) {
                 $ok++;
             } else {
                 $fail++;
+                if ($isTimeout) {
+                    $timeoutCount++;
+                }
             }
         }
 
         return [
-            'total'   => $docs->count(),
-            'ok'      => $ok,
-            'fail'    => $fail,
-            'results' => $results,
+            'total'          => $docs->count(),
+            'ok'             => $ok,
+            'fail'           => $fail,
+            'timeout_count'  => $timeoutCount,
+            'results'        => $results,
         ];
     }
+
     /**
-     * Internal key first (no Laravel callback). Bearer optional for compatibility.
+     * Internal key first (no Laravel callback). Bearer only if internal key is empty.
      *
      * @param  \Illuminate\Http\Client\PendingRequest  $request
      * @return \Illuminate\Http\Client\PendingRequest
@@ -171,13 +213,13 @@ class PythonDocumentSync
     private function applyAuthHeaders($request, ?string $bearerToken = null)
     {
         if ($this->internalApiKey !== '') {
-            $request = $request->withHeaders([
+            return $request->withHeaders([
                 'X-Internal-Key' => $this->internalApiKey,
             ]);
         }
 
         if ($bearerToken) {
-            $request = $request->withToken($bearerToken);
+            return $request->withToken($bearerToken);
         }
 
         return $request;
@@ -202,5 +244,51 @@ class PythonDocumentSync
             'body'   => $body ?? $response->body(),
             'error'  => is_array($body) ? ($body['message'] ?? 'python-failed') : 'python-failed',
         ];
+    }
+
+    /**
+     * Normalize HTTP client failures into a stable API shape.
+     */
+    private function exceptionResult(string $logMessage, string $docUuid, Throwable $e, int $timeoutSeconds): array
+    {
+        $isTimeout = $this->isTimeoutException($e);
+
+        Log::error($logMessage, [
+            'doc_uuid' => $docUuid,
+            'error'    => $e->getMessage(),
+            'timeout'  => $isTimeout,
+            'class'    => get_class($e),
+        ]);
+
+        if ($isTimeout) {
+            return [
+                'ok'              => false,
+                'error'           => 'python-timeout',
+                'timeout'         => true,
+                'timeout_seconds' => $timeoutSeconds,
+            ];
+        }
+
+        return [
+            'ok'    => false,
+            'error' => $e->getMessage() !== '' ? $e->getMessage() : 'python-connection-error',
+        ];
+    }
+
+    private function isTimeoutException(Throwable $e): bool
+    {
+        if ($e instanceof ConnectionException) {
+            $msg = strtolower($e->getMessage());
+            if (str_contains($msg, 'timeout') || str_contains($msg, 'timed out') || str_contains($msg, 'cURL error 28')) {
+                return true;
+            }
+        }
+
+        $msg = strtolower($e->getMessage());
+
+        return str_contains($msg, 'timeout')
+            || str_contains($msg, 'timed out')
+            || str_contains($msg, 'cURL error 28')
+            || str_contains($msg, 'operation timed out');
     }
 }

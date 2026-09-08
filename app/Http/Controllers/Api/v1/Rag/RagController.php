@@ -10,6 +10,7 @@ use App\Services\RagResponseCache\RagResponseCache;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use App\Utility\FileManagerRepo;
+use App\Utility\PythonDocumentSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -24,6 +25,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * - MySQL history (append-only human + ai; edit keeps previous rows)
  * - exact response cache via Redis (RagResponseCache)
  * - user_context ACL proxy to Python
+ * - reembed / cacheClear (admin)
  */
 class RagController extends ApiController
 {
@@ -35,8 +37,8 @@ class RagController extends ApiController
 
     public function __construct()
     {
-        $this->pythonBaseUrl = rtrim(config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
-        $this->timeout = (int) config('services.python.timeout', 180);
+        $this->pythonBaseUrl = rtrim((string) config('services.python.base_url', 'http://127.0.0.1:8001'), '/');
+        $this->timeout = max(1, (int) config('services.python.timeout', 180));
         $this->responseCache = new RagResponseCache();
     }
 
@@ -88,7 +90,6 @@ class RagController extends ApiController
             }
         }
 
-        // --- exact cache (same query + same ACL generation) ---
         if (!$skipCache) {
             $cached = $this->responseCache->get($validated['query'], $info);
             if (is_array($cached) && array_key_exists('answer', $cached)) {
@@ -673,25 +674,25 @@ class RagController extends ApiController
             }
 
             $this->audit('rag.ask_with_file', 'chat_session', $sessionId, [
-                'status'               => 'ok',
-                'human_message_id'     => $human->id,
-                'ai_message_id'        => $ai->id,
-                'chat_message_file_id' => $messageFile->id,
-                'file_name'            => $messageFile->file_name,
+                'status'                 => 'ok',
+                'human_message_id'       => $human->id,
+                'ai_message_id'          => $ai->id,
+                'chat_message_file_id'   => $messageFile->id,
+                'file_name'              => $messageFile->file_name,
                 'edited_from_message_id' => $editOfId,
             ]);
 
             return $this->successResponse([
-                'answer'               => $answer,
-                'sources'              => $sources,
-                'session_id'           => $sessionId,
-                'processing_time'      => $data['processing_time'] ?? null,
-                'file_processed'       => $data['file_processed'] ?? $messageFile->file_name,
-                'human_message_id'     => $human->id,
-                'ai_message_id'        => $ai->id,
-                'chat_message_file_id' => $messageFile->id,
+                'answer'                 => $answer,
+                'sources'                => $sources,
+                'session_id'             => $sessionId,
+                'processing_time'        => $data['processing_time'] ?? null,
+                'file_processed'         => $data['file_processed'] ?? $messageFile->file_name,
+                'human_message_id'       => $human->id,
+                'ai_message_id'          => $ai->id,
+                'chat_message_file_id'   => $messageFile->id,
                 'edited_from_message_id' => $editOfId,
-                'file'                 => [
+                'file'                   => [
                     'id'         => $messageFile->id,
                     'file_name'  => $messageFile->file_name,
                     'extension'  => $messageFile->extension,
@@ -735,6 +736,10 @@ class RagController extends ApiController
             : $this->errorResponse('cache-clear-failed', 500);
     }
 
+    /**
+     * Re-ingest all published documents into Qdrant (overwrite).
+     * Transport timeouts are classified in PythonDocumentSync; report includes timeout_count.
+     */
     public function reembed()
     {
         $user = Auth::user();
@@ -742,19 +747,35 @@ class RagController extends ApiController
             return $this->errorResponse('not-authorized', 403);
         }
 
-        $sync = new \App\Utility\PythonDocumentSync();
+        $sync = new PythonDocumentSync();
         $report = $sync->reembedAllPublished();
 
         (new RagResponseCache())->invalidateAll();
 
+        $timeoutCount = (int) ($report['timeout_count'] ?? 0);
+        $connectionErrorCount = (int) ($report['connection_error_count'] ?? 0);
+        $fail = (int) ($report['fail'] ?? 0);
+
         $this->audit('rag.reembed', 'rag_index', null, [
-            'total' => $report['total'],
-            'ok'    => $report['ok'],
-            'fail'  => $report['fail'],
+            'total'                  => $report['total'] ?? 0,
+            'ok'                     => $report['ok'] ?? 0,
+            'fail'                   => $fail,
+            'timeout_count'          => $timeoutCount,
+            'connection_error_count' => $connectionErrorCount,
         ]);
 
-        $code = ($report['fail'] ?? 0) > 0 ? 207 : 200; // 207 = multi-status اختیاری
-        return $this->successResponse($report, $code, 'reembed-finished');
+        $message = 'reembed-finished';
+        if ($timeoutCount > 0) {
+            $message = 'reembed-partial-timeout';
+        } elseif ($connectionErrorCount > 0) {
+            $message = 'reembed-partial-connection-error';
+        } elseif ($fail > 0) {
+            $message = 'reembed-partial-failed';
+        }
+
+        $code = $fail > 0 ? 207 : 200;
+
+        return $this->successResponse($report, $code, $message);
     }
 
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
@@ -766,7 +787,6 @@ class RagController extends ApiController
         $human->msg_id = null;
         $human->sources = null;
 
-        // append-only: previous human/ai rows stay in DB
         if (!$human->save()) {
             return null;
         }

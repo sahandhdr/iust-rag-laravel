@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Jobs\ReembedPublishedDocumentsJob;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Laravel gateway for RAG:
@@ -737,8 +739,8 @@ class RagController extends ApiController
     }
 
     /**
-     * Re-ingest all published documents into Qdrant (overwrite).
-     * Transport timeouts are classified in PythonDocumentSync; report includes timeout_count.
+     * Queue re-embed of all published documents (Phase 1).
+     * Returns 202 immediately; worker runs ReembedPublishedDocumentsJob.
      */
     public function reembed()
     {
@@ -747,35 +749,72 @@ class RagController extends ApiController
             return $this->errorResponse('not-authorized', 403);
         }
 
-        $sync = new PythonDocumentSync();
-        $report = $sync->reembedAllPublished();
-
-        (new RagResponseCache())->invalidateAll();
-
-        $timeoutCount = (int) ($report['timeout_count'] ?? 0);
-        $connectionErrorCount = (int) ($report['connection_error_count'] ?? 0);
-        $fail = (int) ($report['fail'] ?? 0);
-
-        $this->audit('rag.reembed', 'rag_index', null, [
-            'total'                  => $report['total'] ?? 0,
-            'ok'                     => $report['ok'] ?? 0,
-            'fail'                   => $fail,
-            'timeout_count'          => $timeoutCount,
-            'connection_error_count' => $connectionErrorCount,
-        ]);
-
-        $message = 'reembed-finished';
-        if ($timeoutCount > 0) {
-            $message = 'reembed-partial-timeout';
-        } elseif ($connectionErrorCount > 0) {
-            $message = 'reembed-partial-connection-error';
-        } elseif ($fail > 0) {
-            $message = 'reembed-partial-failed';
+        if (Cache::has('rag:reembed') === false) {
+            // lock key is held only while job runs; optional early signal via last status
         }
 
-        $code = $fail > 0 ? 207 : 200;
+        $last = Cache::get('rag:reembed:last');
+        if (is_array($last) && ($last['status'] ?? '') === 'running') {
+            return $this->successResponse([
+                'queued'  => false,
+                'status'  => 'already-running',
+                'last'    => $last,
+            ], 200, 'reembed-already-running');
+        }
 
-        return $this->successResponse($report, $code, $message);
+        $jobKey = (string) \Illuminate\Support\Str::uuid();
+
+        Cache::put('rag:reembed:status:' . $jobKey, [
+            'status'     => 'queued',
+            'job_key'    => $jobKey,
+            'queued_at'  => now()->toIso8601String(),
+        ], now()->addDay());
+
+        \App\Jobs\ReembedPublishedDocumentsJob::dispatch($jobKey, $user->id);
+
+        $this->audit('rag.reembed_queued', 'rag_index', $jobKey, [
+            'status'  => 'queued',
+            'job_key' => $jobKey,
+            'user_id' => $user->id,
+        ]);
+
+        return $this->successResponse([
+            'queued'  => true,
+            'job_key' => $jobKey,
+            'status'  => 'queued',
+            'hint'    => 'Run: php artisan queue:work redis --timeout=3600',
+        ], 202, 'reembed-queued');
+    }
+
+    /**
+     * Poll last / specific re-embed job status (admin).
+     * Query: ?job_key=optional-uuid
+     */
+    public function reembedStatus(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('not-authorized', 403);
+        }
+
+        $jobKey = $request->query('job_key');
+        if ($jobKey) {
+            $status = Cache::get('rag:reembed:status:' . $jobKey);
+            if (!$status) {
+                return $this->errorResponse('reembed-status-notFound', 404);
+            }
+            return $this->successResponse($status, 200, 'reembed-status');
+        }
+
+        $last = Cache::get('rag:reembed:last');
+        if (!$last) {
+            return $this->successResponse([
+                'status' => 'none',
+                'message'=> 'no-reembed-job-yet',
+            ], 200, 'reembed-status');
+        }
+
+        return $this->successResponse($last, 200, 'reembed-status');
     }
 
     /**

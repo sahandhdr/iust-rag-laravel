@@ -778,6 +778,61 @@ class RagController extends ApiController
         return $this->successResponse($report, $code, $message);
     }
 
+    /**
+     * Wipe entire Qdrant collection + recreate Hybrid schema (admin).
+     * Body: { "confirm": true }
+     * Does not delete MySQL documents or Laravel storage files.
+     */
+    public function wipeCollection(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('not-authorized', 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'confirm' => 'required|boolean|accepted',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->messages(), 422);
+        }
+
+        $sync = new PythonDocumentSync();
+        $token = null; // internal key path preferred inside PythonDocumentSync
+        $result = $sync->wipeCollection($token);
+
+        if (!($result['ok'] ?? false)) {
+            $this->audit('rag.wipe_collection', 'rag_index', null, [
+                'status'  => 'failed',
+                'error'   => $result['error'] ?? 'wipe-failed',
+                'timeout' => !empty($result['timeout']),
+                'detail'  => $result,
+            ]);
+
+            $code = !empty($result['timeout']) ? 504 : 500;
+
+            return $this->errorResponse(
+                $result['error'] ?? 'wipe-collection-failed',
+                $code,
+                $result
+            );
+        }
+
+        (new RagResponseCache())->invalidateAll();
+
+        $this->audit('rag.wipe_collection', 'rag_index', null, [
+            'status' => 'ok',
+            'data'   => $result['data'] ?? $result['body'] ?? null,
+        ]);
+
+        return $this->successResponse(
+            $result['data'] ?? $result['body'] ?? $result,
+            200,
+            'wipe-collection-ok'
+        );
+    }
+
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
     {
         $human = new ChatMessage();

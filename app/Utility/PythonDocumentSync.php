@@ -20,7 +20,7 @@ use Throwable;
  *
  * Timeouts (from config/services.php → env):
  *   python.connect_timeout  — TCP connect
- *   python.ingest_timeout   — ingest / delete / reembed per document
+ *   python.ingest_timeout   — ingest / delete / reembed / wipe
  *   python.timeout          — fallback if ingest_timeout missing
  */
 class PythonDocumentSync
@@ -130,7 +130,6 @@ class PythonDocumentSync
 
             $response = $request->delete($this->baseUrl . '/api/v1/files/' . rawurlencode($docUuid));
 
-            // idempotent: already gone is OK for archive/destroy
             if ($response->status() === 404) {
                 return [
                     'ok'      => true,
@@ -143,6 +142,40 @@ class PythonDocumentSync
             return $this->wrap($response);
         } catch (Throwable $e) {
             return $this->exceptionResult('Python delete exception', $docUuid, $e, $this->ingestTimeout);
+        }
+    }
+
+    /**
+     * Wipe entire Qdrant collection and recreate Hybrid schema.
+     * Requires Python body confirm=true (sent by this method).
+     *
+     * @return array{
+     *     ok: bool,
+     *     status?: int,
+     *     body?: mixed,
+     *     data?: mixed,
+     *     error?: string,
+     *     timeout?: bool,
+     *     timeout_seconds?: int
+     * }
+     */
+    public function wipeCollection(?string $bearerToken = null): array
+    {
+        try {
+            $request = Http::timeout($this->ingestTimeout)
+                ->connectTimeout($this->connectTimeout)
+                ->acceptJson()
+                ->asJson();
+
+            $request = $this->applyAuthHeaders($request, $bearerToken);
+
+            $response = $request->post($this->baseUrl . '/api/v1/sync/collection/wipe', [
+                'confirm' => true,
+            ]);
+
+            return $this->wrap($response);
+        } catch (Throwable $e) {
+            return $this->exceptionResult('Python wipe-collection exception', 'collection', $e, $this->ingestTimeout);
         }
     }
 
@@ -165,7 +198,6 @@ class PythonDocumentSync
             ->whereNull('deleted_at')
             ->get();
 
-        // Prefer internal key path: do not pass bearer when internal key is configured
         $token = $this->internalApiKey !== '' ? null : request()->bearerToken();
 
         $results = [];
@@ -196,11 +228,11 @@ class PythonDocumentSync
         }
 
         return [
-            'total'          => $docs->count(),
-            'ok'             => $ok,
-            'fail'           => $fail,
-            'timeout_count'  => $timeoutCount,
-            'results'        => $results,
+            'total'         => $docs->count(),
+            'ok'            => $ok,
+            'fail'          => $fail,
+            'timeout_count' => $timeoutCount,
+            'results'       => $results,
         ];
     }
 
@@ -246,9 +278,6 @@ class PythonDocumentSync
         ];
     }
 
-    /**
-     * Normalize HTTP client failures into a stable API shape.
-     */
     private function exceptionResult(string $logMessage, string $docUuid, Throwable $e, int $timeoutSeconds): array
     {
         $isTimeout = $this->isTimeoutException($e);

@@ -47,10 +47,10 @@ class RagController extends ApiController
     public function ask(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'               => 'required|string|max:2000',
-            'session_id'          => 'nullable',
+            'query'               => 'required|string|min:1|max:2000',
+            'session_id'          => 'nullable|integer|min:1',
             'msg_id'              => 'nullable|string|max:50',
-            'selected_text'       => 'nullable|string',
+            'selected_text'       => 'nullable|string|max:50000',
             'edit_of_message_id'  => 'nullable|integer|min:1',
             'skip_cache'          => 'nullable|boolean',
         ]);
@@ -253,9 +253,9 @@ class RagController extends ApiController
     public function askStream(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'query'              => 'required|string|max:2000',
-            'session_id'         => 'nullable',
-            'selected_text'      => 'nullable|string',
+            'query'              => 'required|string|min:1|max:2000',
+            'session_id'         => 'nullable|integer|min:1',
+            'selected_text'      => 'nullable|string|max:50000',
             'edit_of_message_id' => 'nullable|integer|min:1',
         ]);
 
@@ -515,8 +515,8 @@ class RagController extends ApiController
     public function askWithFile(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'              => 'required|string|max:2000',
-            'session_id'         => 'nullable',
+            'query'              => 'required|string|min:1|max:2000',
+            'session_id'         => 'nullable|integer|min:1',
             'file'               => 'required|file|max:20480',
             'edit_of_message_id' => 'nullable|integer|min:1',
         ]);

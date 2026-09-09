@@ -13,15 +13,6 @@ use Throwable;
 /**
  * Bridge Laravel document lifecycle → Python Qdrant.
  * MySQL/disk remain Laravel's responsibility.
- *
- * Auth for server-to-server:
- *   X-Internal-Key  → preferred; avoids verify-token deadlock on single-worker PHP
- *   Bearer          → only when internal key is empty (compatibility)
- *
- * Timeouts (from config/services.php → env):
- *   python.connect_timeout  — TCP connect
- *   python.ingest_timeout   — ingest / delete / reembed / wipe
- *   python.timeout          — fallback if ingest_timeout missing
  */
 class PythonDocumentSync
 {
@@ -40,20 +31,6 @@ class PythonDocumentSync
         $this->internalApiKey = (string) config('services.python.internal_api_key', '');
     }
 
-    /**
-     * Plan A: same doc_uuid → overwrite chunks in Qdrant.
-     *
-     * @return array{
-     *     ok: bool,
-     *     skipped?: bool,
-     *     status?: int,
-     *     body?: mixed,
-     *     error?: string,
-     *     data?: mixed,
-     *     timeout?: bool,
-     *     timeout_seconds?: int
-     * }
-     */
     public function ingest(Document $document, ?string $bearerToken = null, bool $overwrite = true): array
     {
         if (!$document->path || !Storage::disk('public')->exists($document->path)) {
@@ -105,17 +82,6 @@ class PythonDocumentSync
         }
     }
 
-    /**
-     * @return array{
-     *     ok: bool,
-     *     skipped?: bool,
-     *     status?: int,
-     *     body?: mixed,
-     *     error?: string,
-     *     timeout?: bool,
-     *     timeout_seconds?: int
-     * }
-     */
     public function deleteFromQdrant(string $docUuid, ?string $bearerToken = null): array
     {
         if ($docUuid === '') {
@@ -145,20 +111,6 @@ class PythonDocumentSync
         }
     }
 
-    /**
-     * Wipe entire Qdrant collection and recreate Hybrid schema.
-     * Requires Python body confirm=true (sent by this method).
-     *
-     * @return array{
-     *     ok: bool,
-     *     status?: int,
-     *     body?: mixed,
-     *     data?: mixed,
-     *     error?: string,
-     *     timeout?: bool,
-     *     timeout_seconds?: int
-     * }
-     */
     public function wipeCollection(?string $bearerToken = null): array
     {
         try {
@@ -180,17 +132,38 @@ class PythonDocumentSync
     }
 
     /**
-     * Re-ingest all published documents (overwrite).
-     * Per-document timeout via ingest(); continues on failure.
+     * Orphan markdown cleanup under Python data_dir.
      *
-     * @return array{
-     *     total: int,
-     *     ok: int,
-     *     fail: int,
-     *     timeout_count: int,
-     *     results: list<array{doc_uuid: mixed, id: mixed, ok: bool, detail: array}>
-     * }
+     * @return array{ok: bool, status?: int, body?: mixed, data?: mixed, error?: string, timeout?: bool}
      */
+    public function cleanupOrphanData(
+        bool $dryRun = true,
+        bool $confirm = false,
+        bool $removeEmptyDirs = true,
+        bool $cleanupTempIngest = true,
+        ?string $bearerToken = null
+    ): array {
+        try {
+            $request = Http::timeout($this->ingestTimeout)
+                ->connectTimeout($this->connectTimeout)
+                ->acceptJson()
+                ->asJson();
+
+            $request = $this->applyAuthHeaders($request, $bearerToken);
+
+            $response = $request->post($this->baseUrl . '/api/v1/sync/data/cleanup', [
+                'dry_run'             => $dryRun,
+                'confirm'             => $confirm,
+                'remove_empty_dirs'   => $removeEmptyDirs,
+                'cleanup_temp_ingest' => $cleanupTempIngest,
+            ]);
+
+            return $this->wrap($response);
+        } catch (Throwable $e) {
+            return $this->exceptionResult('Python data-cleanup exception', 'data', $e, $this->ingestTimeout);
+        }
+    }
+
     public function reembedAllPublished(): array
     {
         $docs = Document::query()
@@ -236,12 +209,6 @@ class PythonDocumentSync
         ];
     }
 
-    /**
-     * Internal key first (no Laravel callback). Bearer only if internal key is empty.
-     *
-     * @param  \Illuminate\Http\Client\PendingRequest  $request
-     * @return \Illuminate\Http\Client\PendingRequest
-     */
     private function applyAuthHeaders($request, ?string $bearerToken = null)
     {
         if ($this->internalApiKey !== '') {

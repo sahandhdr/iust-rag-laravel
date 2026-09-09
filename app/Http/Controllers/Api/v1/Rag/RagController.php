@@ -872,6 +872,71 @@ class RagController extends ApiController
         );
     }
 
+    /**
+     * Cleanup orphan markdown under Python data/ (admin).
+     * Body: dry_run (default true), confirm (required if dry_run=false)
+     */
+    public function dataCleanup(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['admin', 'developer'])) {
+            return $this->errorResponse('not-authorized', 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'dry_run'             => 'nullable|boolean',
+            'confirm'             => 'nullable|boolean',
+            'remove_empty_dirs'   => 'nullable|boolean',
+            'cleanup_temp_ingest' => 'nullable|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->messages(), 422);
+        }
+
+        $dryRun = $request->boolean('dry_run', true);
+        $confirm = $request->boolean('confirm', false);
+
+        if (!$dryRun && !$confirm) {
+            return $this->errorResponse('confirm-required-when-not-dry-run', 422);
+        }
+
+        $sync = new PythonDocumentSync();
+        $result = $sync->cleanupOrphanData(
+            $dryRun,
+            $confirm,
+            $request->boolean('remove_empty_dirs', true),
+            $request->boolean('cleanup_temp_ingest', true),
+            null
+        );
+
+        if (!($result['ok'] ?? false)) {
+            $this->audit('rag.data_cleanup', 'rag_data', null, [
+                'status'  => 'failed',
+                'dry_run' => $dryRun,
+                'error'   => $result['error'] ?? 'cleanup-failed',
+            ]);
+
+            return $this->errorResponse(
+                $result['error'] ?? 'data-cleanup-failed',
+                !empty($result['timeout']) ? 504 : 500,
+                $result
+            );
+        }
+
+        $this->audit('rag.data_cleanup', 'rag_data', null, [
+            'status'  => 'ok',
+            'dry_run' => $dryRun,
+            'data'    => $result['data'] ?? null,
+        ]);
+
+        return $this->successResponse(
+            $result['data'] ?? $result['body'] ?? $result,
+            200,
+            $dryRun ? 'data-cleanup-dry-run' : 'data-cleanup-ok'
+        );
+    }
+
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
     {
         $human = new ChatMessage();

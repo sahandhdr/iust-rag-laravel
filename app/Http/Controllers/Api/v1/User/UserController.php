@@ -12,16 +12,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use function Laravel\Prompts\error;
 
 class UserController extends ApiController
 {
     public function index()
     {
-        if (User::all()->count() > 0) {
-            $users = User::with('roles', 'positions')->get();
-            return $this->successResponse(UserResource::collection($users), 200);
+        $user = Auth::user();
+
+        if ($user->hasAnyRole(['admin', 'developer'])) {
+            if (User::all()->count() > 0) {
+                $users = User::with('roles', 'positions')->get();
+                return $this->successResponse(UserResource::collection($users), 200);
+            }
+            return $this->errorResponse('user-notFound', 404);
         }
-        return $this->errorResponse('user-notFound', 404);
+        return $this->errorResponse('not-authorized', 503);
     }
 
     /**
@@ -71,11 +77,17 @@ class UserController extends ApiController
      */
     public function show($user_id)
     {
-        if (User::where("id", $user_id)->exists()) {
-            $user = User::where("id", $user_id)->with('roles', 'positions')->first();
-            return $this->successResponse(new UserResource($user), 200);
+        $user = Auth::user();
+
+        if ($user->hasAnyRole(['admin', 'developer']))
+        {
+            if (User::where("id", $user_id)->exists()) {
+                $user = User::where("id", $user_id)->with('roles', 'positions')->first();
+                return $this->successResponse(new UserResource($user), 200);
+            }
+            return $this->errorResponse('user-notFound', 404);
         }
-        return $this->errorResponse('user-notFound', 404);
+        return $this->errorResponse('not-authorized', 503);
     }
 
     /**
@@ -83,6 +95,9 @@ class UserController extends ApiController
      */
     public function update(Request $request, $user_id)
     {
+        if ((Auth::id() != $user_id) || !(Auth::user()->hasAnyRole(['admin', 'developer'])))
+            return $this->errorResponse('not-authorized', 503);
+
         if (User::where("id", $user_id)->exists()) {
             $validator = Validator::make($request->all(), [
                 "name" => 'nullable',

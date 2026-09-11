@@ -12,8 +12,8 @@ Route::get('/user', function (Request $request) {
 
 Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'register'])->middleware('throttle:login');
 Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login'])->middleware('throttle:login');
-Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout']);
-Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword']);
+Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);;
 Route::match(['get', 'post'], '/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
 //Route::post('/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
 
@@ -27,10 +27,10 @@ Route::get("/v1/user/show/{user_id}", [\App\Http\Controllers\Api\v1\User\UserCon
 Route::post("/v1/user/update/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
 Route::get("/v1/user/delete/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/user/restore/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "restore"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/user/search", [\App\Http\Controllers\Api\v1\User\UserController::class, "searchUser"])->middleware('auth:sanctum');
+Route::post("/v1/user/search", [\App\Http\Controllers\Api\v1\User\UserController::class, "searchUser"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/user/remove_pic/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "removeUserPicFromStorage"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
-Route::post("/v1/user/change/pass/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "changePassword"])->middleware('auth:sanctum');
-Route::get('/v1/user/check_permission/{user_id}/{permission}',[\App\Http\Controllers\Api\v1\User\UserController::class, "checkPermissionExists"]);
+Route::post("/v1/user/change/pass/{user_id}", [\App\Http\Controllers\Api\v1\User\UserController::class, "changePassword"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get('/v1/user/check_permission/{user_id}/{permission}',[\App\Http\Controllers\Api\v1\User\UserController::class, "checkPermissionExists"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 
 /* ------------------------------| roles |------------------------------ */
@@ -101,12 +101,12 @@ Route::post("/v1/permission/sync_docs/{permission_id}", [\App\Http\Controllers\A
 //======================================== departments ========================================
 Route::get("/v1/depts", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/dept/store", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "store"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::get("/v1/dept/show/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "show"])->middleware('auth:sanctum');
-Route::get("/v1/dept/get_all", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "getAllDepartments"])->middleware('auth:sanctum');
+Route::get("/v1/dept/show/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/dept/get_all", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "getAllDepartments"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/dept/update/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/dept/delete/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/dept/restore/{dept_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "restore"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/dept/search", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
+Route::post("/v1/dept/search", [\App\Http\Controllers\Api\v1\Department\DepartmentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 /* ------------------------------| documents |------------------------------ */
 Route::get("/v1/dept/attach_doc/{dept_id}/{doc_id}", [\App\Http\Controllers\Api\v1\Department\DepartmentRelationController::class, "attachDocumentToDepartment"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
@@ -120,14 +120,14 @@ Route::post("/v1/dept/sync_users/{dept_id}", [\App\Http\Controllers\Api\v1\Depar
 
 
 //======================================== documents ========================================
-Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
+Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "uploadDoc"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/show/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/update/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 // حذف کامل: Qdrant → disk → MySQL  (متد destroy در DocumentController)
 Route::get("/v1/doc/delete/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer,public']);
+Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 Route::get("/v1/doc/get/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "get"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/get_base64/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "getBase64"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);

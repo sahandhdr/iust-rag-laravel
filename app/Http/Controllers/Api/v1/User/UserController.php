@@ -27,7 +27,7 @@ class UserController extends ApiController
             }
             return $this->errorResponse('user-notFound', 404);
         }
-        return $this->errorResponse('not-authorized', 503);
+        return $this->errorResponse('not-authorized', 403);
     }
 
     /**
@@ -79,7 +79,7 @@ class UserController extends ApiController
     {
         $user = Auth::user();
 
-        if ($user->hasAnyRole(['admin', 'developer']))
+        if ($user->hasAnyRole(['admin', 'developer']) || Auth::id() == $user_id)
         {
             if (User::where("id", $user_id)->exists()) {
                 $user = User::where("id", $user_id)->with('roles', 'positions')->first();
@@ -87,7 +87,7 @@ class UserController extends ApiController
             }
             return $this->errorResponse('user-notFound', 404);
         }
-        return $this->errorResponse('not-authorized', 503);
+        return $this->errorResponse('not-authorized', 403);
     }
 
     /**
@@ -95,8 +95,8 @@ class UserController extends ApiController
      */
     public function update(Request $request, $user_id)
     {
-        if ((Auth::id() != $user_id) || !(Auth::user()->hasAnyRole(['admin', 'developer'])))
-            return $this->errorResponse('not-authorized', 503);
+        if ((Auth::id() != $user_id) && !(Auth::user()->hasAnyRole(['admin', 'developer'])))
+            return $this->errorResponse('not-authorized', 403);
 
         if (User::where("id", $user_id)->exists()) {
             $validator = Validator::make($request->all(), [

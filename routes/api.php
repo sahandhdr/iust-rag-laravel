@@ -13,7 +13,7 @@ Route::get('/user', function (Request $request) {
 Route::post('/v1/user/register', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'register'])->middleware('throttle:login');
 Route::post('/v1/user/login', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/v1/user/logout', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'logout'])->middleware('auth:sanctum');
-Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);;
+Route::post('/v1/user/change_password/{user_id}', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'changeUserPassword'])->middleware('auth:sanctum');
 Route::match(['get', 'post'], '/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
 //Route::post('/v1/auth/verify-token', [\App\Http\Controllers\Api\v1\Auth\AuthController::class, 'verifyToken',])->middleware('auth:sanctum');
 

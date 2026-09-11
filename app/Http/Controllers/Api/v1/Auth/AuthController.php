@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Traits\v1\ApiInfo;
 use App\Traits\v1\Auditable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -175,6 +176,9 @@ class AuthController extends ApiController
 
     public function changeUserPassword(Request $request, $user_id)
     {
+        if (Auth::id() != $user_id)
+            return $this->errorResponse('not-authorized', 403);
+
         if (
             $request->hasHeader('accept')
             && $request->header('accept') == 'application/json'

@@ -42,5 +42,12 @@ return [
         'connect_timeout'  => env('PYTHON_CONNECT_TIMEOUT', 15),
         'internal_api_key' => env('PYTHON_INTERNAL_API_KEY', ''),
     ],
+    'rag' => [
+        'cache_ttl'                 => env('RAG_CACHE_TTL', 86400),
+        'semantic_cache_enabled'    => env('RAG_SEMANTIC_CACHE_ENABLED', true),
+        'semantic_threshold'        => env('RAG_SEMANTIC_THRESHOLD', 0.92),
+        'semantic_max_candidates'   => env('RAG_SEMANTIC_MAX_CANDIDATES', 50),
+        'embed_timeout'             => env('RAG_EMBED_TIMEOUT', 30),
+    ],
 
 ];

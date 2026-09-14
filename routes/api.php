@@ -121,22 +121,22 @@ Route::post("/v1/dept/sync_users/{dept_id}", [\App\Http\Controllers\Api\v1\Depar
 
 //======================================== documents ========================================
 Route::get("/v1/docs", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "index"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "uploadDoc"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post("/v1/doc/upload", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "uploadDoc"])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::get("/v1/doc/show/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "show"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post("/v1/doc/update/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "update"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 // حذف کامل: Qdrant → disk → MySQL  (متد destroy در DocumentController)
-Route::get("/v1/doc/delete/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/doc/delete/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "destroy"])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::post("/v1/doc/search", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "search"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 Route::get("/v1/doc/get/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "get"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::get("/v1/doc/get_base64/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "getBase64"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 
 // انتشار → MySQL published + ingest به Qdrant
-Route::get("/v1/doc/publish/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "publish"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/doc/publish/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "publish"])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 
 // بایگانی → MySQL archived + حذف از Qdrant (فایل disk می‌ماند)
-Route::get("/v1/doc/archive/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "archive"])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::get("/v1/doc/archive/{doc_id}", [\App\Http\Controllers\Api\v1\Document\DocumentController::class, "archive"])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 
 
 
@@ -189,8 +189,8 @@ Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\C
 Route::post('/v1/rag/ask', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'ask'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-with-file', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askWithFile'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-stream', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askStream'])->middleware('auth:sanctum')->middleware('throttle:rag');
-Route::post('/v1/rag/cache/clear', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'cacheClear'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post('/v1/rag/reembed', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembed'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post('/v1/rag/cache/clear', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'cacheClear'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
+Route::post('/v1/rag/reembed', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembed'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::get('/v1/rag/reembed/status', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembedStatus'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
-Route::post('/v1/rag/wipe-collection', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'wipeCollection'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
+Route::post('/v1/rag/wipe-collection', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'wipeCollection'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::post('/v1/rag/data-cleanup', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'dataCleanup'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);

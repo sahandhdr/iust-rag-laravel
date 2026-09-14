@@ -47,12 +47,12 @@ class RagController extends ApiController
     public function ask(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'query'               => 'required|string|min:1|max:2000',
-            'session_id'          => 'nullable|integer|min:1',
-            'msg_id'              => 'nullable|string|max:50',
-            'selected_text'       => 'nullable|string|max:50000',
-            'edit_of_message_id'  => 'nullable|integer|min:1',
-            'skip_cache'          => 'nullable|boolean',
+            'query'              => 'required|string|min:1|max:2000',
+            'session_id'         => 'nullable|integer|min:1',
+            'msg_id'             => 'nullable|string|max:50',
+            'selected_text'      => 'nullable|string|max:50000',
+            'edit_of_message_id' => 'nullable|integer|min:1',
+            'skip_cache'         => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -92,9 +92,13 @@ class RagController extends ApiController
             }
         }
 
+        // ----- Cache: exact then semantic (inside RagResponseCache::get) -----
         if (!$skipCache) {
             $cached = $this->responseCache->get($validated['query'], $info);
             if (is_array($cached) && array_key_exists('answer', $cached)) {
+                $kind = $cached['_cache_kind'] ?? 'exact';
+                $similarity = $cached['similarity'] ?? null;
+
                 $human = $this->persistHumanMessage($sessionId, $validated['query'], $editOfId);
                 if ($human === null) {
                     return $this->errorResponse('human-message-save-failed', 500);
@@ -118,10 +122,16 @@ class RagController extends ApiController
                 $this->audit('rag.ask', 'chat_session', $sessionId, [
                     'status'                 => 'ok',
                     'from_cache'             => true,
+                    'cache_kind'             => $kind,
+                    'similarity'             => $similarity,
                     'human_message_id'       => $human->id,
                     'ai_message_id'          => $ai->id,
                     'edited_from_message_id' => $editOfId,
                 ]);
+
+                $messageKey = ($kind === 'semantic')
+                    ? 'rag-ok-semantic-cache'
+                    : 'rag-ok-cache';
 
                 return $this->successResponse([
                     'answer'                 => $cached['answer'],
@@ -129,13 +139,16 @@ class RagController extends ApiController
                     'session_id'             => $sessionId,
                     'processing_time'        => 0,
                     'from_cache'             => true,
+                    'cache_kind'             => $kind,
+                    'similarity'             => $similarity,
                     'human_message_id'       => $human->id,
                     'ai_message_id'          => $ai->id,
                     'edited_from_message_id' => $editOfId,
-                ], 200, 'rag-ok-cache');
+                ], 200, $messageKey);
             }
         }
 
+        // ----- Cache miss → Python RAG -----
         $human = $this->persistHumanMessage($sessionId, $validated['query'], $editOfId);
         if ($human === null) {
             return $this->errorResponse('human-message-save-failed', 500);
@@ -211,6 +224,7 @@ class RagController extends ApiController
                 ]);
             }
 
+            // exact + semantic index (داخل set)
             $this->responseCache->set($validated['query'], $info, [
                 'answer'  => $answer,
                 'sources' => $sources,
@@ -230,6 +244,8 @@ class RagController extends ApiController
                 'session_id'             => $sessionId,
                 'processing_time'        => $data['processing_time'] ?? null,
                 'from_cache'             => false,
+                'cache_kind'             => null,
+                'similarity'             => null,
                 'human_message_id'       => $human->id,
                 'ai_message_id'          => $ai->id,
                 'edited_from_message_id' => $editOfId,
@@ -249,7 +265,6 @@ class RagController extends ApiController
             ]);
         }
     }
-
     public function askStream(Request $request): StreamedResponse|\Illuminate\Http\JsonResponse
     {
         $validator = Validator::make($request->all(), [

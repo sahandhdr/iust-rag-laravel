@@ -9,17 +9,11 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
         $this->configureRateLimiting();
@@ -27,14 +21,14 @@ class AppServiceProvider extends ServiceProvider
 
     private function configureRateLimiting(): void
     {
-        // General API: 60 req/min per user or IP
+        // API عمومی: ۶۰ درخواست در دقیقه به ازای کاربر یا IP
         RateLimiter::for('api', function (Request $request) {
             $key = optional($request->user())->id ?: $request->ip();
 
             return Limit::perMinute(60)->by('api:'.$key);
         });
 
-        // Login / auth endpoints: stricter
+        // Auth: سخت‌گیرانه
         RateLimiter::for('login', function (Request $request) {
             $email = (string) $request->input('email', '');
 
@@ -44,11 +38,18 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        // RAG chat (heavier): 20 req/min per user
+        // RAG (LLM سنگین)
         RateLimiter::for('rag', function (Request $request) {
             $key = optional($request->user())->id ?: $request->ip();
 
             return Limit::perMinute(20)->by('rag:'.$key);
+        });
+
+        // آپلود / publish / reembed / wipe
+        RateLimiter::for('heavy', function (Request $request) {
+            $key = optional($request->user())->id ?: $request->ip();
+
+            return Limit::perMinute(10)->by('heavy:'.$key);
         });
     }
 }

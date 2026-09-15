@@ -189,7 +189,7 @@ Route::post("/v1/chat/message/file/search", [\App\Http\Controllers\Api\v1\Chat\C
 Route::post('/v1/rag/ask', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'ask'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-with-file', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askWithFile'])->middleware('auth:sanctum')->middleware('throttle:rag');
 Route::post('/v1/rag/ask-stream', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'askStream'])->middleware('auth:sanctum')->middleware('throttle:rag');
-Route::post('/v1/rag/cache/clear', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'cacheClear'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
+Route::get('/v1/rag/cache/clear', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'cacheClear'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::post('/v1/rag/reembed', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembed'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');
 Route::get('/v1/rag/reembed/status', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'reembedStatus'])->middleware('auth:sanctum')->middleware(['role:admin,developer']);
 Route::post('/v1/rag/wipe-collection', [\App\Http\Controllers\Api\v1\Rag\RagController::class, 'wipeCollection'])->middleware('auth:sanctum')->middleware(['role:admin,developer'])->middleware('throttle:heavy');

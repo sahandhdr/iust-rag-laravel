@@ -92,6 +92,10 @@ class RagController extends ApiController
             }
         }
 
+        if ($editOfId !== null) {
+            $skipCache = true;
+        }
+        
         // ----- Cache: exact then semantic (inside RagResponseCache::get) -----
         if (!$skipCache) {
             $cached = $this->responseCache->get($validated['query'], $info);
@@ -960,6 +964,7 @@ class RagController extends ApiController
         $human->content = $content;
         $human->msg_id = null;
         $human->sources = null;
+        $human->edited_from_message_id = $editOfMessageId;
 
         if (!$human->save()) {
             return null;

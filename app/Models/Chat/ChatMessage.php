@@ -12,14 +12,17 @@ class ChatMessage extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = "chat_messages";
+    protected $table = 'chat_messages';
+
     protected $guarded = [];
+
     protected function casts(): array
     {
         return [
-            'sources'    => 'array',
-            'feedback'   => 'boolean', // '1' / '0' → true/false
-            'deleted_at' => 'datetime',
+            'sources'                => 'array',
+            'feedback'               => 'boolean',
+            'edited_from_message_id' => 'integer',
+            'deleted_at'             => 'datetime',
         ];
     }
 
@@ -31,5 +34,15 @@ class ChatMessage extends Model
     public function files(): HasMany
     {
         return $this->hasMany(ChatMessageFile::class, 'message_id');
+    }
+
+    public function editedFrom(): BelongsTo
+    {
+        return $this->belongsTo(ChatMessage::class, 'edited_from_message_id');
+    }
+
+    public function edits(): HasMany
+    {
+        return $this->hasMany(ChatMessage::class, 'edited_from_message_id');
     }
 }

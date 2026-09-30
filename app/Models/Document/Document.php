@@ -15,17 +15,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Document extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
     protected $table = "documents";
     protected $guarded = [];
 
-    protected function casts(): array
-    {
-        return [
-            'version'    => 'integer',
-            'deleted_at' => 'datetime',
-        ];
-    }
+//    protected function casts(): array
+//    {
+//        return [
+//            'version'    => 'integer',
+//            'deleted_at' => 'datetime',
+//        ];
+//    }
 
     public function uploader(): BelongsTo
     {

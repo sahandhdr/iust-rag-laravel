@@ -28,7 +28,7 @@ class DepartmentController extends ApiController
                 {
                     $departments = Department::withTrashed()->get();
                 }
-                elseif ($user->hasRole('user'))
+                elseif ($user->hasRole('public'))
                 {
                     $departments = Department::whereNull('deleted_at')->get();
                 }

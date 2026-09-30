@@ -31,8 +31,7 @@ class DocumentController extends ApiController
         $user = Auth::user();
 
         if ($user->hasAnyRole(['admin', 'developer'])) {
-            $documents = Document::withTrashed()
-                ->with(['roles', 'departments', 'permissions'])
+            $documents = Document::with(['roles', 'departments', 'permissions'])
                 ->get();
 
             if ($documents->isEmpty()) {
@@ -262,7 +261,7 @@ class DocumentController extends ApiController
         $doc = null;
 
         if ($user->hasAnyRole(['admin', 'developer'])) {
-            $doc = Document::withTrashed()->with('uploader', 'roles', 'permissions', 'departments')
+            $doc = Document::with('uploader', 'roles', 'permissions', 'departments')
                 ->where('id', $id)->first();
         } elseif ($user->hasRole('public')) {
             $doc = Document::where('id', $id)->whereNull('deleted_at')->first();

@@ -95,7 +95,7 @@ class RagController extends ApiController
         if ($editOfId !== null) {
             $skipCache = true;
         }
-        
+
         // ----- Cache: exact then semantic (inside RagResponseCache::get) -----
         if (!$skipCache) {
             $cached = $this->responseCache->get($validated['query'], $info);

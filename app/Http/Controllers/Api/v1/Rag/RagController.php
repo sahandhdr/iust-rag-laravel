@@ -96,6 +96,11 @@ class RagController extends ApiController
             $skipCache = true;
         }
 
+        // Session-dialog answers must not hit global response cache
+        if (!$skipCache && $this->isDialogDependentQuery($validated['query'])) {
+            $skipCache = true;
+        }
+
         // ----- Cache: exact then semantic (inside RagResponseCache::get) -----
         if (!$skipCache) {
             $cached = $this->responseCache->get($validated['query'], $info);
@@ -228,11 +233,13 @@ class RagController extends ApiController
                 ]);
             }
 
-            // exact + semantic index (داخل set)
-            $this->responseCache->set($validated['query'], $info, [
-                'answer'  => $answer,
-                'sources' => $sources,
-            ]);
+            // exact + semantic index — never store dialog-dependent answers
+            if (!$this->isDialogDependentQuery($validated['query'])) {
+                $this->responseCache->set($validated['query'], $info, [
+                    'answer'  => $answer,
+                    'sources' => $sources,
+                ]);
+            }
 
             $this->audit('rag.ask', 'chat_session', $sessionId, [
                 'status'                 => 'ok',
@@ -954,6 +961,50 @@ class RagController extends ApiController
             200,
             $dryRun ? 'data-cleanup-dry-run' : 'data-cleanup-ok'
         );
+    }
+
+
+    /**
+     * Dialog-dependent questions must NOT use global response cache.
+     * Patterns are language-level (user identity / conversation continuity),
+     * not organization-specific names or roles.
+     *
+     * Examples that skip cache:
+     *   «اسم من چی هست؟»  «من کیستم؟»  «یادت میاد چی گفتم؟»
+     * Examples that still cache:
+     *   «ساعات کاری مرکز»  «افراد مرکز کی‌اند؟»
+     */
+    private function isDialogDependentQuery(string $query): bool
+    {
+        $q = trim($query);
+        if ($q === '') {
+            return false;
+        }
+
+        $patterns = [
+            '/اسم\s*من\b/u',
+            '/اسمم\b/u',
+            '/نام\s*من\b/u',
+            '/نامم\b/u',
+            '/من\s*کیستم/u',
+            '/من\s*کی\s*هستم/u',
+            '/خودم\s*را\s*معرفی/u',
+            '/یادت\s*می\s*آد/u',
+            '/یادت\s*میاد/u',
+            '/یادت\s*هست/u',
+            '/قبلا\s*چ[یي]\s*گفتم/u',
+            '/چی\s*گفته\s*بودم/u',
+            '/چه\s*گفته\s*بودم/u',
+            '/من\s*چ[یي]\s*پرسیده\s*بودم/u',
+        ];
+
+        foreach ($patterns as $re) {
+            if (preg_match($re, $q) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function persistHumanMessage($sessionId, string $content, ?int $editOfMessageId = null): ?ChatMessage
